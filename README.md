@@ -96,30 +96,6 @@ CommandK asks for broad permissions because a command palette needs to see your 
 
 **Privacy:** everything runs locally in your browser. CommandK sends no data to any server, has no analytics, and only talks to Chrome's own extension APIs. The favicon fallback requests an icon from `google.com/s2/favicons` for sites whose icon isn't in Chrome's cache — nothing else leaves your machine.
 
-## Project layout
-
-| Path                              | Role                                                                                                       |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `manifest.json`                   | MV3 manifest (Chrome)                                                                                      |
-| `manifest.firefox.json`           | Firefox overrides merged by the build script                                                               |
-| `tsdown.config.js`                | Bundler config: one IIFE bundle per entry point                                                            |
-| `jsconfig.json`                   | JSDoc type-checking (`pnpm typecheck`) with `@types/chrome`                                                |
-| `scripts/build.mjs`               | Assembles `dist/chrome` and `dist/firefox` from the bundles + static assets                                |
-| `scripts/test.mjs`                | Capability-matrix test across both engine profiles                                                         |
-| `src/platform.js`                 | The only module that knows about browser differences: capabilities + adapters                              |
-| `src/shared.js`                   | Fuzzy matching, URL/calc helpers, action registry, result building and rendering — shared by both surfaces |
-| `src/content.js`                  | The in-page overlay (shadow DOM) — bundled to `content.js`                                                 |
-| `src/popup.html` / `src/popup.js` | The toolbar popup mini palette — bundled to `popup.js`                                                     |
-| `src/background.js`               | Service worker: browser data and action execution — bundled to `background.js`                             |
-| `src/phosphor-icons.js`           | Bundled Phosphor (Bold) icon set (ESM export imported by the UI)                                           |
-| `src/palette.css`                 | Palette styles (adopted into the shadow root)                                                              |
-| `src/host.css`                    | Positions the shadow host on the page                                                                      |
-| `src/fonts/`, `src/icons/`        | Bundled Inter weights and extension icons                                                                  |
-
-The three entry points (`content`, `background`, `popup`) are bundled into
-self-contained IIFEs, so each manifest only lists a single script and the old
-script-order coupling is gone.
-
 ## Development
 
 `pnpm build` runs tsdown (Rolldown) to produce one self-contained IIFE per entry
