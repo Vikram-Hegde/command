@@ -24,7 +24,7 @@ let cache = { tabs: [], bookmarks: [], history: [], closed: [] };
 let engine = 'google';
 let debounce = null;
 
-chrome.storage?.local.get(['engine'], r => { if (r.engine) engine = r.engine; });
+api.storage.local.get(['engine']).then(r => { if (r.engine) engine = r.engine; }).catch(() => {});
 
 function showNotice(msg) {
   notice.hidden = false;
@@ -37,8 +37,8 @@ async function restrictedReason(url) {
   if (/^(chrome|chrome-error|about|edge|brave|opera|vivaldi):/.test(url)) return 'settings';
   if (/^(chrome|edge)-extension:/.test(url)) return 'extension';
   if (/chromewebstore\.google\.com|chrome\.google\.com\/webstore/.test(url)) return 'store';
-  if (url.startsWith('file://') && chrome.extension?.isAllowedFileSchemeAccess) {
-    if (!(await chrome.extension.isAllowedFileSchemeAccess())) return 'file';
+  if (url.startsWith('file://') && api.extension?.isAllowedFileSchemeAccess) {
+    if (!(await api.extension.isAllowedFileSchemeAccess())) return 'file';
   }
   return null;
 }
@@ -123,13 +123,13 @@ function handleCmdKey(e) {
 }
 
 const sendExec = (action, payload = {}) =>
-  chrome.runtime.sendMessage({ type: 'EXEC', action, payload: { tabId, windowId, ...payload } });
+  api.runtime.sendMessage({ type: 'EXEC', action, payload: { tabId, windowId, ...payload } });
 
 async function choose(e) {
   const it = filtered[sel];
   const q = input.value;
   if (!it) {
-    if (q.trim() && mode === 'all') { chrome.runtime.sendMessage({ type: 'OPEN_URL', url: ENGINES[engine](q.trim()), tabId }); window.close(); }
+    if (q.trim() && mode === 'all') { api.runtime.sendMessage({ type: 'OPEN_URL', url: ENGINES[engine](q.trim()), tabId }); window.close(); }
     return;
   }
   const newTab = e.shiftKey, bg = e.ctrlKey || e.metaKey;
@@ -142,10 +142,10 @@ async function choose(e) {
   } else if (it.kind === 'action') {
     await runAction(it.actionId);
   } else if (newTab || bg) {
-    await chrome.runtime.sendMessage({ type: 'NEW_TAB', url: it.url });
+    await api.runtime.sendMessage({ type: 'NEW_TAB', url: it.url });
     window.close();
   } else {
-    await chrome.runtime.sendMessage({ type: 'OPEN_URL', url: it.url, tabId });
+    await api.runtime.sendMessage({ type: 'OPEN_URL', url: it.url, tabId });
     window.close();
   }
 }
@@ -155,7 +155,7 @@ async function runAction(id) {
   if (!def) return;
   if (id === 'engine') {
     engine = nextEngine(engine);
-    await chrome.storage?.local.set({ engine });
+    await api.storage.local.set({ engine });
     await refresh(input.value);
     return; // keep popup open
   }
@@ -163,10 +163,11 @@ async function runAction(id) {
   // the registry's exec/payload to the background.
   if (id === 'copy-url' || id === 'copy-title') {
     try {
-      const t = await chrome.tabs.get(tabId);
+      const t = await api.tabs.get(tabId);
       await navigator.clipboard.writeText(id === 'copy-url' ? t.url : `[${t.title}](${t.url})`);
     } catch {}
   } else if (def.exec) {
+    if (def.before) await globalThis.CMDK_PLATFORM[def.before]?.();
     await sendExec(def.exec, { ...(def.payload || {}) }).catch(() => {});
   }
   window.close();
@@ -204,7 +205,7 @@ list.addEventListener('click', e => {
 });
 
 (async function init() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await api.tabs.query({ active: true, currentWindow: true });
   tabId = tab?.id ?? null;
   windowId = tab?.windowId ?? null;
   const reason = await restrictedReason(tab?.url || '');
@@ -214,16 +215,16 @@ list.addEventListener('click', e => {
   } else {
     if (reason === 'file') showNotice(MESSAGES.file);
     btn.addEventListener('click', async () => {
-      const [t] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const [t] = await api.tabs.query({ active: true, currentWindow: true });
       if (!t?.id) return;
       try {
-        await chrome.tabs.sendMessage(t.id, { type: 'TOGGLE_PALETTE' });
+        await api.tabs.sendMessage(t.id, { type: 'TOGGLE_PALETTE' });
         window.close();
       } catch {
         try {
-          await chrome.scripting.executeScript({ target: { tabId: t.id }, files: ['phosphor-icons.js', 'shared.js', 'content.js'] });
-          await chrome.scripting.insertCSS({ target: { tabId: t.id }, files: ['host.css'] });
-          setTimeout(() => chrome.tabs.sendMessage(t.id, { type: 'TOGGLE_PALETTE' }), 200);
+          await api.scripting.executeScript({ target: { tabId: t.id }, files: ['platform.js', 'phosphor-icons.js', 'shared.js', 'content.js'] });
+          await api.scripting.insertCSS({ target: { tabId: t.id }, files: ['host.css'] });
+          setTimeout(() => api.tabs.sendMessage(t.id, { type: 'TOGGLE_PALETTE' }), 200);
           window.close();
         } catch (e) {
           showNotice('Could not reach this tab — it is likely restricted. The mini palette above still works.');

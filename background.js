@@ -1,55 +1,46 @@
-// background.js (MV3 service worker)
+// background.js — MV3 service worker (Chrome) / event page (Firefox).
 // Owns browser data (all tabs, history, bookmarks, sessions) and executes
 // actions on behalf of the overlay and popup.
 
-const CHROME_PAGES = {
-  settings: 'chrome://settings',
-  extensions: 'chrome://extensions',
-  history: 'chrome://history',
-  downloads: 'chrome://downloads',
-  bookmarks: 'chrome://bookmarks',
-  newtab: 'chrome://newtab',
-  passwords: 'chrome://password-manager/passwords',
-  clearData: 'chrome://settings/clearBrowserData',
-  appearance: 'chrome://settings/appearance'
-};
+// Chrome loads this file as a service worker, so pull the platform module in
+// explicitly; Firefox lists platform.js in background.scripts instead.
+if (typeof importScripts === 'function') importScripts('platform.js');
+const { api, page, newTab, saveImage } = globalThis.CMDK_PLATFORM;
 
-chrome.commands?.onCommand.addListener(async (command) => {
+api.commands?.onCommand.addListener(async (command) => {
   if (command !== 'open-palette') return;
-  console.log('[CommandK] command received:', command);
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await api.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;
   try {
-    await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_PALETTE' });
+    await api.tabs.sendMessage(tab.id, { type: 'TOGGLE_PALETTE' });
   } catch {
-    // No content script in this tab yet (e.g. open before install/reload) —
-    // inject, then open. Still a silent no-op on chrome://, error and store
-    // pages, which hard-block all injection.
+    // No content script in this tab yet (e.g. opened before install/reload):
+    // inject, then open. Silent no-op on chrome://, error and store pages,
+    // which block all injection.
     try {
-      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['phosphor-icons.js', 'shared.js', 'content.js'] });
-      await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['host.css'] });
-      await chrome.tabs.sendMessage(tab.id, { type: 'TOGGLE_PALETTE' });
+      await api.scripting.executeScript({ target: { tabId: tab.id }, files: ['platform.js', 'phosphor-icons.js', 'shared.js', 'content.js'] });
+      await api.scripting.insertCSS({ target: { tabId: tab.id }, files: ['host.css'] });
+      await api.tabs.sendMessage(tab.id, { type: 'TOGGLE_PALETTE' });
     } catch (e) { console.warn('[CommandK] cannot reach tab:', tab.url); }
   }
 });
 
-// Allow popup.html button to open palette in current tab
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     switch (msg.type) {
       case 'INIT_DATA': {
         const q = (msg.query || '').slice(0, 100);
         const [tabs, recentHistory, bookmarks, recentlyClosed] = await Promise.all([
-          chrome.tabs.query({}),
-          chrome.history.search({ text: q || '', maxResults: q ? 20 : 8, startTime: Date.now() - 30 * 864e5 }),
+          api.tabs.query({}),
+          api.history.search({ text: q || '', maxResults: q ? 20 : 8, startTime: Date.now() - 30 * 864e5 }),
           queryBookmarks(q),
-          chrome.sessions.getRecentlyClosed({ maxResults: 5 }).catch(() => [])
+          api.sessions.getRecentlyClosed({ maxResults: 5 }).catch(() => [])
         ]);
         sendResponse({ tabs, recentHistory, bookmarks, recentlyClosed });
         break;
       }
       case 'SEARCH_HISTORY': {
-        const r = await chrome.history.search({ text: msg.query || '', maxResults: 12 });
+        const r = await api.history.search({ text: msg.query || '', maxResults: 12 });
         sendResponse({ results: r });
         break;
       }
@@ -59,16 +50,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
       case 'NEW_TAB': {
-        await chrome.tabs.create({ url: msg.url, active: true });
+        await api.tabs.create({ url: msg.url, active: true });
         sendResponse({ ok: true });
         break;
       }
       case 'OPEN_URL': {
         const tab = sender.tab;
         const targetId = msg.tabId ?? tab?.id;
-        if (msg.background) await chrome.tabs.create({ url: msg.url, active: false, index: tab ? tab.index + 1 : undefined });
-        else if (targetId) await chrome.tabs.update(targetId, { url: msg.url });
-        else await chrome.tabs.create({ url: msg.url });
+        if (msg.background) await api.tabs.create({ url: msg.url, active: false, index: tab ? tab.index + 1 : undefined });
+        else if (targetId) await api.tabs.update(targetId, { url: msg.url });
+        else await api.tabs.create({ url: msg.url });
         sendResponse({ ok: true });
         break;
       }
@@ -80,10 +71,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 async function queryBookmarks(q) {
   try {
     if (!q) {
-      const tree = await chrome.bookmarks.getTree();
+      const tree = await api.bookmarks.getTree();
       return flattenBookmarks(tree).slice(0, 30);
     }
-    return await chrome.bookmarks.search(q.slice(0, 50));
+    return await api.bookmarks.search(q.slice(0, 50));
   } catch { return []; }
 }
 
@@ -101,73 +92,80 @@ async function execAction(action, p = {}, sender) {
   const tabId = p.tabId ?? tab?.id;
   switch (action) {
     case 'switch-tab':
-      await chrome.tabs.update(p.tabId, { active: true });
-      await chrome.windows.update(p.windowId, { focused: true });
+      await api.tabs.update(p.tabId, { active: true });
+      await api.windows.update(p.windowId, { focused: true });
       break;
-    case 'close-tab': await chrome.tabs.remove(p.tabId ?? tabId); break;
+    case 'close-tab': await api.tabs.remove(p.tabId ?? tabId); break;
     case 'close-others': {
-      const all = await chrome.tabs.query({ windowId: p.windowId ?? tab?.windowId });
-      await chrome.tabs.remove(all.filter(t => t.id !== (p.keepId ?? tabId)).map(t => t.id));
+      const all = await api.tabs.query({ windowId: p.windowId ?? tab?.windowId });
+      await api.tabs.remove(all.filter(t => t.id !== (p.keepId ?? tabId)).map(t => t.id));
       break;
     }
     case 'close-right': {
-      const all = await chrome.tabs.query({ windowId: p.windowId ?? tab?.windowId });
+      const all = await api.tabs.query({ windowId: p.windowId ?? tab?.windowId });
       const idx = all.find(t => t.id === tabId)?.index ?? 0;
-      await chrome.tabs.remove(all.filter(t => t.index > idx).map(t => t.id));
+      await api.tabs.remove(all.filter(t => t.index > idx).map(t => t.id));
       break;
     }
     case 'close-duplicates': {
-      const all = await chrome.tabs.query({});
+      const all = await api.tabs.query({});
       const seen = new Set(); const dupes = [];
       for (const t of all) { if (!t.url) continue; if (seen.has(t.url)) dupes.push(t.id); else seen.add(t.url); }
-      if (dupes.length) await chrome.tabs.remove(dupes);
+      if (dupes.length) await api.tabs.remove(dupes);
       break;
     }
-    case 'duplicate': await chrome.tabs.duplicate(tabId); break;
+    case 'duplicate': await api.tabs.duplicate(tabId); break;
     case 'pin-toggle': {
-      const t = await chrome.tabs.get(tabId);
-      await chrome.tabs.update(tabId, { pinned: !t.pinned });
+      const t = await api.tabs.get(tabId);
+      await api.tabs.update(tabId, { pinned: !t.pinned });
       break;
     }
     case 'mute-toggle': {
-      const t = await chrome.tabs.get(tabId);
-      await chrome.tabs.update(tabId, { muted: !t.mutedInfo?.muted });
+      const t = await api.tabs.get(tabId);
+      await api.tabs.update(tabId, { muted: !t.mutedInfo?.muted });
       break;
     }
-    case 'reload': await chrome.tabs.reload(tabId); break;
-    case 'hard-reload': await chrome.tabs.reload(tabId, { bypassCache: true }); break;
-    case 'go-back': await chrome.tabs.goBack(tabId).catch(() => {}); break;
-    case 'go-forward': await chrome.tabs.goForward(tabId).catch(() => {}); break;
-    case 'new-tab': await chrome.tabs.create({ url: p.url || 'chrome://newtab' }); break;
-    case 'new-window': await chrome.windows.create({ url: p.url, incognito: !!p.incognito }); break;
+    case 'reload': await api.tabs.reload(tabId); break;
+    case 'hard-reload': await api.tabs.reload(tabId, { bypassCache: true }); break;
+    case 'go-back': await api.tabs.goBack(tabId).catch(() => {}); break;
+    case 'go-forward': await api.tabs.goForward(tabId).catch(() => {}); break;
+    case 'new-tab': await api.tabs.create({ url: p.url || newTab }); break;
+    case 'new-window': await api.windows.create({ url: p.url, incognito: !!p.incognito }); break;
     case 'reopen-closed': {
-      const closed = await chrome.sessions.getRecentlyClosed({ maxResults: 1 });
-      if (closed?.[0]?.tab) await chrome.sessions.restore(closed[0].tab.sessionId);
-      else if (closed?.[0]?.window) await chrome.sessions.restore(closed[0].window.sessionId);
+      const closed = await api.sessions.getRecentlyClosed({ maxResults: 1 });
+      if (closed?.[0]?.tab) await api.sessions.restore(closed[0].tab.sessionId);
+      else if (closed?.[0]?.window) await api.sessions.restore(closed[0].window.sessionId);
       break;
     }
-    case 'move-to-new-window': {
-      await chrome.windows.create({ tabId });
-      break;
-    }
+    case 'move-to-new-window': await api.windows.create({ tabId }); break;
     case 'group-tab': {
-      const t = await chrome.tabs.get(tabId);
-      if (t.groupId > 0) await chrome.tabs.ungroup(tabId);
-      else await chrome.tabs.group({ tabIds: tabId });
+      if (!api.tabs.group) break; // Firefox has no tab groups
+      const t = await api.tabs.get(tabId);
+      if (t.groupId > 0) await api.tabs.ungroup(tabId);
+      else await api.tabs.group({ tabIds: tabId });
       break;
     }
-    case 'chrome-page': await chrome.tabs.create({ url: CHROME_PAGES[p.page] || 'chrome://newtab' }); break;
+    case 'zoom': {
+      const delta = p.delta || 0;
+      if (!delta) await api.tabs.setZoom(tabId, 1);
+      else {
+        const current = await api.tabs.getZoom(tabId);
+        await api.tabs.setZoom(tabId, Math.max(0.25, Math.min(5, +(current + delta).toFixed(2))));
+      }
+      break;
+    }
+    case 'chrome-page': await api.tabs.create({ url: page(p.page) }); break;
     case 'bookmark-tab': {
-      const t = await chrome.tabs.get(tabId);
-      await chrome.bookmarks.create({ title: t.title, url: t.url });
+      const t = await api.tabs.get(tabId);
+      await api.bookmarks.create({ title: t.title, url: t.url });
       break;
     }
     case 'screenshot': {
-      const winId = p.windowId ?? (await chrome.windows.getCurrent()).id;
-      const dataUrl = await chrome.tabs.captureVisibleTab(winId, { format: 'png' });
-      await chrome.downloads.download({ url: dataUrl, filename: `commandk-${Date.now()}.png`, saveAs: false });
+      const winId = p.windowId ?? (await api.windows.getCurrent()).id;
+      const dataUrl = await api.tabs.captureVisibleTab(winId, { format: 'png' });
+      await saveImage(dataUrl, `commandk-${Date.now()}.png`);
       break;
     }
-    case 'discard': await chrome.tabs.discard(tabId); break;
+    case 'discard': if (api.tabs.discard) await api.tabs.discard(tabId); break;
   }
 }

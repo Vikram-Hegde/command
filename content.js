@@ -11,7 +11,7 @@
   let engine = 'google';
   let debounce = null;
 
-  chrome.storage?.local.get(['engine'], r => { if (r.engine) engine = r.engine; });
+  api.storage.local.get(['engine']).then(r => { if (r.engine) engine = r.engine; }).catch(() => {});
 
   // ---------- shell ----------
   function buildShell() {
@@ -137,13 +137,13 @@
     // relative URLs would resolve against the page, so use absolute ext URLs.
     return [400, 500, 600].map(w =>
       `@font-face{font-family:'Inter';font-style:normal;font-weight:${w};font-display:swap;` +
-      `src:url(${chrome.runtime.getURL(`fonts/inter-${w}.woff2`)}) format('woff2');}`
+      `src:url(${api.runtime.getURL(`fonts/inter-${w}.woff2`)}) format('woff2');}`
     ).join('');
   }
   async function loadShadowCss() {
     if (!shadow) return;
     try {
-      const res = await fetch(chrome.runtime.getURL('palette.css'), { cache: 'no-store' });
+      const res = await fetch(api.runtime.getURL('palette.css'), { cache: 'no-store' });
       if (!res.ok) return;
       const css = fontFaces() + await res.text();
       try {
@@ -228,7 +228,7 @@
     const newTab = e.shiftKey, bg = e.ctrlKey || e.metaKey;
     if (it.kind === 'tab') {
       close();
-      await chrome.runtime.sendMessage({ type: 'EXEC', action: 'switch-tab', payload: { tabId: it.tabId, windowId: it.windowId } });
+      await api.runtime.sendMessage({ type: 'EXEC', action: 'switch-tab', payload: { tabId: it.tabId, windowId: it.windowId } });
     } else if (it.kind === 'calc') {
       try { await navigator.clipboard.writeText(it.value); } catch {}
       toast(`Copied ${it.value}`); close();
@@ -236,7 +236,7 @@
       const def = it.def;
       if (def.id === 'engine') {
         engine = nextEngine(engine);
-        chrome.storage?.local.set({ engine });
+        api.storage.local.set({ engine });
         els.inp.value = '';
         refresh('');
         toast(`Search engine: ${engine}`);
@@ -244,6 +244,8 @@
       }
       close();
       if (def.local) { try { await def.local(); } catch {} return; }
+      // e.g. the screenshot action asks the platform to let the overlay repaint.
+      if (def.before) await globalThis.CMDK_PLATFORM[def.before]?.();
       routeAction(def.id);
     } else {
       openResult(it.url, e, newTab, bg);
@@ -252,15 +254,15 @@
 
   async function openResult(url, e, newTab, bg) {
     close();
-    if (newTab || bg) await chrome.runtime.sendMessage({ type: 'NEW_TAB', url }).catch(() => window.open(url, '_blank'));
-    else await chrome.runtime.sendMessage({ type: 'OPEN_URL', url }).catch(() => location.href = url);
+    if (newTab || bg) await api.runtime.sendMessage({ type: 'NEW_TAB', url }).catch(() => window.open(url, '_blank'));
+    else await api.runtime.sendMessage({ type: 'OPEN_URL', url }).catch(() => location.href = url);
   }
 
   // Exec metadata lives on the ACTIONS registry; no per-host switch needed.
   function routeAction(id) {
     const def = actionById(id);
     if (!def?.exec) return;
-    return chrome.runtime.sendMessage({ type: 'EXEC', action: def.exec, payload: { ...(def.payload || {}) } }).catch(() => {});
+    return api.runtime.sendMessage({ type: 'EXEC', action: def.exec, payload: { ...(def.payload || {}) } }).catch(() => {});
   }
 
   // ---------- keyboard containment ----------
@@ -311,7 +313,7 @@
     window.addEventListener(type, containKeyboard, true);
   }
 
-  chrome.runtime?.onMessage.addListener(msg => { if (msg.type === 'TOGGLE_PALETTE') toggle(); });
+  api.runtime.onMessage.addListener(msg => { if (msg.type === 'TOGGLE_PALETTE') toggle(); });
 
   buildShell();
 })();

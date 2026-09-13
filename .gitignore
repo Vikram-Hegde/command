@@ -6,6 +6,8 @@ Thumbs.db
 .idea/
 
 # Packaged extension artifacts
+dist/
+node_modules/
 *.zip
 *.crx
 *.pem

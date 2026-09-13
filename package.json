@@ -1,0 +1,14 @@
+{
+  "name": "commandk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Keyboard-first command palette for Chrome and Firefox: tabs, history, bookmarks, actions, and a calculator.",
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/test.mjs",
+    "run:firefox": "npm run build && npx --yes web-ext run --source-dir dist/firefox",
+    "package:firefox": "npm run build && npx --yes web-ext build --source-dir dist/firefox --artifacts-dir dist",
+    "sign:firefox": "npm run build && npx --yes web-ext sign --source-dir dist/firefox --channel unlisted --api-key \"$AMO_API_KEY\" --api-secret \"$AMO_API_SECRET\" --artifacts-dir dist"
+  }
+}

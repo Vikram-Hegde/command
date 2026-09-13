@@ -1,6 +1,9 @@
 /* shared.js — helpers shared by the overlay (content.js) and the popup palette.
    DOM-free; page-only action handlers run in the page context. */
 
+// platform.js runs first and is the single source of browser capabilities.
+const { api, caps: CAPS } = globalThis.CMDK_PLATFORM;
+
 const ENGINES = {
   google: q => `https://www.google.com/search?q=${encodeURIComponent(q)}`,
   duckduckgo: q => `https://duckduckgo.com/?q=${encodeURIComponent(q)}`,
@@ -12,11 +15,11 @@ const ENGINES = {
 // cache after an extension reload.
 async function fetchData(q) {
   try {
-    const d = await chrome.runtime.sendMessage({ type: 'INIT_DATA', query: q });
+    const d = await api.runtime.sendMessage({ type: 'INIT_DATA', query: q });
     const data = { tabs: d.tabs || [], bookmarks: d.bookmarks || [], history: d.recentHistory || [], closed: d.recentlyClosed || [] };
     if (q) {
       try {
-        const h = await chrome.runtime.sendMessage({ type: 'SEARCH_HISTORY', query: q });
+        const h = await api.runtime.sendMessage({ type: 'SEARCH_HISTORY', query: q });
         data.history = h.results || data.history;
       } catch {}
     }
@@ -50,9 +53,10 @@ const fav = url => {
 // Chrome's own favicon cache (needs the "favicon" permission). Works offline
 // and for localhost; fails gracefully for unvisited or odd URLs.
 const favEndpoint = url => {
+  if (!CAPS.faviconCache) return null;
   try {
     if (!url || !/^https?:/i.test(url)) return null;
-    return chrome.runtime.getURL('/_favicon/') + '?pageUrl=' + encodeURIComponent(url) + '&size=32';
+    return api.runtime.getURL('/_favicon/') + '?pageUrl=' + encodeURIComponent(url) + '&size=32';
   } catch { return null; }
 };
 // Icon fallbacks in order: the tab's real icon, Chrome's cache, then Google S2.
@@ -234,20 +238,20 @@ const ACTIONS = [
   { id: 'close-right', title: 'Close Tabs to the Right', hint: 'Tab', icon: 'arrow-line-right', kw: 'close right', exec: 'close-right' },
   { id: 'close-dupes', title: 'Close Duplicate Tabs', hint: 'Tab', icon: 'trash', kw: 'close duplicate dedupe', exec: 'close-duplicates' },
   { id: 'move-window', title: 'Move Tab to New Window', hint: 'Tab', icon: 'arrow-square-out', kw: 'move pop out window', exec: 'move-to-new-window' },
-  { id: 'group', title: 'Group / Ungroup Tab', hint: 'Tab', icon: 'stack', kw: 'group ungroup organize', exec: 'group-tab' },
-  { id: 'discard', title: 'Unload (Discard) Tab to Save Memory', hint: 'Tab', icon: 'moon', kw: 'discard unload sleep memory suspend', exec: 'discard' },
+  { id: 'group', title: 'Group / Ungroup Tab', hint: 'Tab', icon: 'stack', kw: 'group ungroup organize', exec: 'group-tab', requires: 'canGroup' },
+  { id: 'discard', title: 'Unload (Discard) Tab to Save Memory', hint: 'Tab', icon: 'moon', kw: 'discard unload sleep memory suspend', exec: 'discard', requires: 'canDiscard' },
   { id: 'copy-url', title: 'Copy URL', hint: 'Clipboard', icon: 'link', kw: 'copy url link address', local: () => navigator.clipboard.writeText(location.href) },
   { id: 'copy-title', title: 'Copy Title + URL', hint: 'Clipboard', icon: 'clipboard-text', kw: 'copy title markdown', local: () => navigator.clipboard.writeText(`[${document.title}](${location.href})`) },
   { id: 'bookmark', title: 'Bookmark This Tab', hint: 'Action', icon: 'bookmark', kw: 'bookmark star favorite save', exec: 'bookmark-tab' },
-  { id: 'screenshot', title: 'Screenshot Visible Area (PNG download)', hint: 'Action', icon: 'camera', kw: 'screenshot capture png image', exec: 'screenshot' },
+  { id: 'screenshot', title: 'Screenshot Visible Area (PNG download)', hint: 'Action', icon: 'camera', kw: 'screenshot capture png image', exec: 'screenshot', before: 'beforeCapture' },
   { id: 'print', title: 'Print Page', hint: 'Action', icon: 'printer', kw: 'print pdf', pageOnly: true, local: () => window.print() },
   { id: 'source', title: 'View Page Source', hint: 'Dev', icon: 'code', kw: 'source view html code', pageOnly: true, local: () => window.open('view-source:' + location.href, '_blank') },
   { id: 'scroll-top', title: 'Scroll to Top', hint: 'Page', icon: 'arrow-up', kw: 'scroll top up', pageOnly: true, local: () => window.scrollTo({ top: 0, behavior: 'smooth' }) },
   { id: 'scroll-bottom', title: 'Scroll to Bottom', hint: 'Page', icon: 'arrow-down', kw: 'scroll bottom down', pageOnly: true, local: () => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }) },
   { id: 'fullscreen', title: 'Toggle Fullscreen', hint: 'View', icon: 'corners-out', kw: 'fullscreen f11 present', pageOnly: true, local: () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen() },
-  { id: 'zoom-in', title: 'Zoom In', hint: 'View', icon: 'magnifying-glass-plus', kw: 'zoom in bigger', pageOnly: true, local: () => document.body.style.zoom = (parseFloat(document.body.style.zoom) || 1) + 0.1 },
-  { id: 'zoom-out', title: 'Zoom Out', hint: 'View', icon: 'magnifying-glass-minus', kw: 'zoom out smaller', pageOnly: true, local: () => document.body.style.zoom = (parseFloat(document.body.style.zoom) || 1) - 0.1 },
-  { id: 'zoom-reset', title: 'Reset Zoom', hint: 'View', icon: 'arrows-counter-clockwise', kw: 'zoom reset 100', pageOnly: true, local: () => document.body.style.zoom = 1 },
+  { id: 'zoom-in', title: 'Zoom In', hint: 'View', icon: 'magnifying-glass-plus', kw: 'zoom in bigger', exec: 'zoom', payload: { delta: 0.1 } },
+  { id: 'zoom-out', title: 'Zoom Out', hint: 'View', icon: 'magnifying-glass-minus', kw: 'zoom out smaller', exec: 'zoom', payload: { delta: -0.1 } },
+  { id: 'zoom-reset', title: 'Reset Zoom', hint: 'View', icon: 'arrows-counter-clockwise', kw: 'zoom reset 100', exec: 'zoom', payload: { delta: 0 } },
   { id: 'pg-history', title: 'Open History', hint: 'Chrome', icon: 'clock', kw: 'history open chrome page', exec: 'chrome-page', payload: { page: 'history' } },
   { id: 'pg-downloads', title: 'Open Downloads', hint: 'Chrome', icon: 'download-simple', kw: 'downloads files chrome', exec: 'chrome-page', payload: { page: 'downloads' } },
   { id: 'pg-bookmarks', title: 'Open Bookmark Manager', hint: 'Chrome', icon: 'bookmarks-simple', kw: 'bookmarks manager chrome', exec: 'chrome-page', payload: { page: 'bookmarks' } },
@@ -277,6 +281,7 @@ function buildItems(q, scope, data, { engine = 'google', includePageOnly = true,
 
   for (const a of ACTIONS) {
     if (a.pageOnly && !includePageOnly) continue;
+    if (a.requires && !CAPS[a.requires]) continue;
     const s = ql ? match(ql, a.title, a.kw) : 5;
     if (s > -Infinity && (!ql || s > 0)) out.push({ kind: 'action', group: 'Actions', title: a.title, subtitle: a.hint, icon: a.icon, actionId: a.id, def: a, score: s + 20 });
   }
