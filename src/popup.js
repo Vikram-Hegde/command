@@ -1,30 +1,54 @@
+// @ts-check
 /* popup.js — mini command palette that works on EVERY tab, including
    chrome://, error and store pages where content scripts are blocked.
    Talks to background.js only (INIT_DATA/SEARCH_HISTORY/EXEC/NEW_TAB/OPEN_URL),
    always passing an explicit tabId/windowId since popup senders have no sender.tab. */
+import { api } from './platform.js';
+import { PHOSPHOR as PH } from './phosphor-icons.js';
+import {
+  ENGINES,
+  buildItems,
+  itemsHtml,
+  emptyHtml,
+  helpHtml,
+  modeById,
+  nextEngine,
+  actionById,
+  commandIntent,
+  advanceFav,
+  fetchData,
+} from './shared.js';
 
-const $ = id => document.getElementById(id);
-const PH = window.PHOSPHOR || {};
+const $ = (id) => document.getElementById(id);
 if (PH.command) {
   if ($('logo')) $('logo').innerHTML = PH.command;
   if ($('mini-logo')) $('mini-logo').innerHTML = PH.command;
 }
 
-const notice = $('notice');
-const btn = $('open');
-const input = $('q');
-const list = $('results');
-const chip = $('chip');
-const hints = $('hints');
+const notice = /** @type {HTMLElement} */ ($('notice'));
+const btn = /** @type {HTMLButtonElement} */ ($('open'));
+const input = /** @type {HTMLInputElement} */ ($('q'));
+const list = /** @type {HTMLElement} */ ($('results'));
+const chip = /** @type {HTMLElement} */ ($('chip'));
+const hints = /** @type {HTMLElement} */ ($('hints'));
 
-let tabId = null, windowId = null;
-let filtered = [], sel = 0;
-let mode = 'all', ui = 'search', help = false;
+let tabId = null,
+  windowId = null;
+let filtered = [],
+  sel = 0;
+let mode = 'all',
+  ui = 'search',
+  help = false;
 let cache = { tabs: [], bookmarks: [], history: [], closed: [] };
 let engine = 'google';
 let debounce = null;
 
-api.storage.local.get(['engine']).then(r => { if (r.engine) engine = r.engine; }).catch(() => {});
+api.storage.local
+  .get(['engine'])
+  .then((r) => {
+    if (r.engine) engine = r.engine;
+  })
+  .catch(() => {});
 
 function showNotice(msg) {
   notice.hidden = false;
@@ -47,21 +71,26 @@ const MESSAGES = {
   settings: 'This tab is a browser page — the overlay is blocked here, but the mini palette above works fully.',
   extension: 'This tab belongs to another extension — overlay blocked, mini palette works.',
   store: 'The Web Store blocks overlays — mini palette works.',
-  file: 'For local files, enable “Allow access to file URLs” for full overlay support. Mini palette works.'
+  file: 'For local files, enable “Allow access to file URLs” for full overlay support. Mini palette works.',
 };
 
 async function refresh(q) {
   const d = await fetchData(q);
   if (d) cache = d;
-  filtered = buildItems(q, mode, cache, { engine, includePageOnly: false, tabLimit: 40, tabMatchLimit: 40 }).slice(0, 40);
-  sel = 0; render();
+  filtered = buildItems(q, mode, cache, { engine, includePageOnly: false, tabLimit: 40, tabMatchLimit: 40 }).slice(
+    0,
+    40,
+  );
+  sel = 0;
+  render();
 }
 
 function render() {
-  if (help) { list.innerHTML = helpHtml(); return; }
-  list.innerHTML = filtered.length
-    ? itemsHtml(filtered, sel, PH)
-    : emptyHtml(mode, input.value, engine);
+  if (help) {
+    list.innerHTML = helpHtml();
+    return;
+  }
+  list.innerHTML = filtered.length ? itemsHtml(filtered, sel, PH) : emptyHtml(mode, input.value, engine);
   list.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
 }
 
@@ -75,17 +104,23 @@ function setSel(n) {
 
 // ---------- modal state (NORMAL / SEARCH / help) ----------
 const searchPlaceholder = () => modeById(mode).placeholder || 'Search…';
-const NORMAL_FOOTER = '<span><kbd>t</kbd> tabs</span><span><kbd>h</kbd> history</span><span><kbd>b</kbd> bookmarks</span><span><kbd>a</kbd> actions</span><span><kbd>/</kbd> search</span><span><kbd>?</kbd> help</span>';
-const SEARCH_FOOTER = '<span><kbd>↑↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>⇧↵</kbd> new tab</span><span><kbd>esc</kbd> normal mode</span>';
+const NORMAL_FOOTER =
+  '<span><kbd>t</kbd> tabs</span><span><kbd>h</kbd> history</span><span><kbd>b</kbd> bookmarks</span><span><kbd>a</kbd> actions</span><span><kbd>/</kbd> search</span><span><kbd>?</kbd> help</span>';
+const SEARCH_FOOTER =
+  '<span><kbd>↑↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>⇧↵</kbd> new tab</span><span><kbd>esc</kbd> normal mode</span>';
 
 function renderStatus() {
   if (!chip) return;
   const m = modeById(mode);
-  chip.textContent = help ? '? help' : (ui === 'normal' ? (mode === 'all' ? 'NORMAL' : `NORMAL · ${m.label}`) : m.label);
+  chip.textContent = help ? '? help' : ui === 'normal' ? (mode === 'all' ? 'NORMAL' : `NORMAL · ${m.label}`) : m.label;
   chip.dataset.ui = help ? 'help' : ui;
   input.readOnly = ui === 'normal';
   input.placeholder = ui === 'normal' ? 'Press t/h/b/a to scope · / to search' : searchPlaceholder();
-  hints.innerHTML = help ? '<span><kbd>?</kbd> or <kbd>esc</kbd> to close help</span>' : (ui === 'normal' ? NORMAL_FOOTER : SEARCH_FOOTER);
+  hints.innerHTML = help
+    ? '<span><kbd>?</kbd> or <kbd>esc</kbd> to close help</span>'
+    : ui === 'normal'
+      ? NORMAL_FOOTER
+      : SEARCH_FOOTER;
 }
 function setUI(next) {
   if (next === 'normal' && help) help = false;
@@ -109,16 +144,33 @@ function handleCmdKey(e) {
   const intent = commandIntent(e.key);
   if (!intent) return;
   switch (intent.type) {
-    case 'help': setHelp(true); break;
-    case 'mode': mode = intent.mode; setUI('search'); refresh(input.value); break;
-    case 'search': setUI('search'); break;
-    case 'move': setSel(sel + intent.delta); break;
-    case 'choose': choose(e); break;
-    case 'escape':
-      if (mode !== 'all') { mode = 'all'; renderStatus(); refresh(input.value); }
-      else window.close();
+    case 'help':
+      setHelp(true);
       break;
-    case 'close': window.close(); break;
+    case 'mode':
+      mode = intent.mode;
+      setUI('search');
+      refresh(input.value);
+      break;
+    case 'search':
+      setUI('search');
+      break;
+    case 'move':
+      setSel(sel + intent.delta);
+      break;
+    case 'choose':
+      choose(e);
+      break;
+    case 'escape':
+      if (mode !== 'all') {
+        mode = 'all';
+        renderStatus();
+        refresh(input.value);
+      } else window.close();
+      break;
+    case 'close':
+      window.close();
+      break;
   }
 }
 
@@ -129,15 +181,21 @@ async function choose(e) {
   const it = filtered[sel];
   const q = input.value;
   if (!it) {
-    if (q.trim() && mode === 'all') { api.runtime.sendMessage({ type: 'OPEN_URL', url: ENGINES[engine](q.trim()), tabId }); window.close(); }
+    if (q.trim() && mode === 'all') {
+      api.runtime.sendMessage({ type: 'OPEN_URL', url: ENGINES[engine](q.trim()), tabId });
+      window.close();
+    }
     return;
   }
-  const newTab = e.shiftKey, bg = e.ctrlKey || e.metaKey;
+  const newTab = e.shiftKey,
+    bg = e.ctrlKey || e.metaKey;
   if (it.kind === 'tab') {
     await sendExec('switch-tab', { tabId: it.tabId, windowId: it.windowId });
     window.close();
   } else if (it.kind === 'calc') {
-    try { await navigator.clipboard.writeText(it.value); } catch {}
+    try {
+      await navigator.clipboard.writeText(it.value);
+    } catch {}
     window.close();
   } else if (it.kind === 'action') {
     await runAction(it.actionId);
@@ -167,8 +225,8 @@ async function runAction(id) {
       await navigator.clipboard.writeText(id === 'copy-url' ? t.url : `[${t.title}](${t.url})`);
     } catch {}
   } else if (def.exec) {
-    if (def.before) await globalThis.CMDK_PLATFORM[def.before]?.();
-    await sendExec(def.exec, { ...(def.payload || {}) }).catch(() => {});
+    if (def.before) await def.before();
+    await sendExec(def.exec, { ...def.payload }).catch(() => {});
   }
   window.close();
 }
@@ -177,28 +235,50 @@ input.addEventListener('input', () => {
   clearTimeout(debounce);
   debounce = setTimeout(() => refresh(input.value), 140);
 });
-input.addEventListener('keydown', e => {
-  if (e.key === 'ArrowDown') { e.preventDefault(); setSel(sel + 1); }
-  else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(sel - 1); }
-  else if (e.key === 'Enter') { e.preventDefault(); choose(e); }
-  else if (e.key === 'Escape') { e.preventDefault(); setUI('normal'); }
-  else if (e.key === '?' && !input.value) { e.preventDefault(); setHelp(true); }
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    setSel(sel + 1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    setSel(sel - 1);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    choose(e);
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    setUI('normal');
+  } else if (e.key === '?' && !input.value) {
+    e.preventDefault();
+    setHelp(true);
+  }
 });
-input.addEventListener('click', () => { if (ui === 'normal' || help) setUI('search'); });
+input.addEventListener('click', () => {
+  if (ui === 'normal' || help) setUI('search');
+});
 // NORMAL/help keys arrive here because the input is blurred in those states.
-document.addEventListener('keydown', e => {
-  if (ui !== 'normal' && !help) return;
-  if (e.metaKey || e.ctrlKey || e.altKey) return;
-  handleCmdKey(e);
-  e.preventDefault();
-  e.stopPropagation();
-}, true);
-list.addEventListener('error', e => {
-  const t = e.target;
-  if (t && t.tagName === 'IMG' && t.hasAttribute('data-fav')) advanceFav(t, PH);
-}, true);
-list.addEventListener('click', e => {
-  const el = e.target.closest('.cmdk-item');
+document.addEventListener(
+  'keydown',
+  (e) => {
+    if (ui !== 'normal' && !help) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    handleCmdKey(e);
+    e.preventDefault();
+    e.stopPropagation();
+  },
+  true,
+);
+list.addEventListener(
+  'error',
+  (e) => {
+    const t = /** @type {Element} */ (e.target);
+    if (t && t.tagName === 'IMG' && t.hasAttribute('data-fav')) advanceFav(t, PH);
+  },
+  true,
+);
+list.addEventListener('click', (e) => {
+  const target = /** @type {Element} */ (e.target);
+  const el = /** @type {HTMLElement} */ (target.closest('.cmdk-item'));
   if (!el) return;
   sel = +el.dataset.i;
   choose(e);
@@ -222,11 +302,11 @@ list.addEventListener('click', e => {
         window.close();
       } catch {
         try {
-          await api.scripting.executeScript({ target: { tabId: t.id }, files: ['platform.js', 'phosphor-icons.js', 'shared.js', 'content.js'] });
+          await api.scripting.executeScript({ target: { tabId: t.id }, files: ['content.js'] });
           await api.scripting.insertCSS({ target: { tabId: t.id }, files: ['host.css'] });
           setTimeout(() => api.tabs.sendMessage(t.id, { type: 'TOGGLE_PALETTE' }), 200);
           window.close();
-        } catch (e) {
+        } catch {
           showNotice('Could not reach this tab — it is likely restricted. The mini palette above still works.');
         }
       }

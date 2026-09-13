@@ -1,15 +1,13 @@
 #!/usr/bin/env node
-// Capability matrix: loads platform.js + shared.js under a Chrome-like and a
-// Firefox-like manifest and asserts the adapter and action gating, plus that
-// every runtime entry point actually loads platform.js first. Run in CI so a
-// change aimed at one browser can't silently regress the other.
+// Capability matrix: asserts the platform adapter and action gating for both
+// engine profiles, plus the bundled-entry wiring. Run in CI so a change aimed
+// at one browser can't silently regress the other.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import vm from 'node:vm';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const read = p => readFileSync(join(ROOT, p), 'utf8');
+const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 
 let failures = 0;
 function check(name, cond) {
@@ -17,57 +15,54 @@ function check(name, cond) {
   if (!cond) failures++;
 }
 
-const platformSrc = read('platform.js');
-const sharedSrc = read('shared.js');
+const CHROME_MANIFEST = { permissions: ['tabs', 'favicon'] };
+const FIREFOX_MANIFEST = { permissions: ['tabs'], browser_specific_settings: { gecko: {} } };
 
-// Evaluate the two scripts in an isolated context shaped like a content script.
-function load(manifest) {
-  const sandbox = {
-    console, Math, Date, URL, encodeURIComponent,
-    chrome: {
-      runtime: { getManifest: () => manifest, getURL: p => 'ext://' + p },
-      downloads: {}, tabs: {}
-    }
-  };
-  vm.createContext(sandbox);
-  vm.runInContext(platformSrc, sandbox, { filename: 'platform.js' });
-  vm.runInContext(`${sharedSrc}\n;globalThis.__t = { buildItems, CAPS, actionById, PLATFORM: globalThis.CMDK_PLATFORM };`, sandbox, { filename: 'shared.js' });
-  return sandbox.__t;
-}
+// platform.js reads globalThis.chrome at import, so stub it first.
+globalThis.chrome = {
+  runtime: { getManifest: () => CHROME_MANIFEST, getURL: (p) => 'ext://' + p },
+  downloads: {},
+  tabs: {},
+};
+
+const { detectCaps, pagesFor } = await import('../src/platform.js');
+const { buildItems, actionById } = await import('../src/shared.js');
 
 const empty = { tabs: [], bookmarks: [], history: [], closed: [] };
-const visible = (t, id) => t.buildItems('', 'all', empty).some(i => i.actionId === id);
+const visible = (caps, id) => buildItems('', 'all', empty, { caps }).some((i) => i.actionId === id);
 
 console.log('Chrome profile');
-const chrome = load({ permissions: ['tabs', 'favicon'] });
-check('favicon cache available', chrome.CAPS.faviconCache);
-check('accepts data: downloads', chrome.CAPS.dataUrlDownloads);
-check('capture needs repaint', chrome.CAPS.captureNeedsRepaint);
-check('discard + group exposed', visible(chrome, 'discard') && visible(chrome, 'group'));
-check('settings -> chrome://', chrome.PLATFORM.page('settings') === 'chrome://settings');
-check('new tab -> chrome://newtab', chrome.PLATFORM.newTab === 'chrome://newtab');
+const chromeCaps = detectCaps(CHROME_MANIFEST);
+check('favicon cache available', chromeCaps.faviconCache);
+check('accepts data: downloads', chromeCaps.dataUrlDownloads);
+check('capture needs repaint', chromeCaps.captureNeedsRepaint);
+check('discard + group exposed', visible(chromeCaps, 'discard') && visible(chromeCaps, 'group'));
+check('settings -> chrome://', pagesFor(CHROME_MANIFEST).settings === 'chrome://settings');
+check('new tab -> chrome://newtab', pagesFor(CHROME_MANIFEST).newtab === 'chrome://newtab');
 
 console.log('Firefox profile');
-const ff = load({ permissions: ['tabs'], browser_specific_settings: { gecko: {} } });
-check('no favicon cache', !ff.CAPS.faviconCache);
-check('blob: downloads required', !ff.CAPS.dataUrlDownloads);
-check('no capture repaint needed', !ff.CAPS.captureNeedsRepaint);
-check('discard + group hidden', !visible(ff, 'discard') && !visible(ff, 'group'));
-check('settings -> about:preferences', ff.PLATFORM.page('settings') === 'about:preferences');
-check('new tab -> about:newtab', ff.PLATFORM.newTab === 'about:newtab');
-check('screenshot uses platform before-hook',
-  ff.actionById('screenshot').before === 'beforeCapture' && typeof ff.PLATFORM.beforeCapture === 'function');
-check('platform exposes saveImage', typeof ff.PLATFORM.saveImage === 'function');
+const ffCaps = detectCaps(FIREFOX_MANIFEST);
+check('no favicon cache', !ffCaps.faviconCache);
+check('blob: downloads required', !ffCaps.dataUrlDownloads);
+check('no capture repaint needed', !ffCaps.captureNeedsRepaint);
+check('discard + group hidden', !visible(ffCaps, 'discard') && !visible(ffCaps, 'group'));
+check('settings -> about:preferences', pagesFor(FIREFOX_MANIFEST).settings === 'about:preferences');
+check('new tab -> about:newtab', pagesFor(FIREFOX_MANIFEST).newtab === 'about:newtab');
+
+console.log('Registry');
+check('screenshot declares a before hook', typeof actionById('screenshot').before === 'function');
+check('discard requires a capability', actionById('discard').requires === 'canDiscard');
 
 console.log('Wiring');
 const chromeManifest = JSON.parse(read('manifest.json'));
 const ffManifest = JSON.parse(read('manifest.firefox.json'));
-check('chrome content scripts load platform.js first', chromeManifest.content_scripts[0].js[0] === 'platform.js');
-check('firefox background loads platform.js first', ffManifest.background.scripts[0] === 'platform.js');
-check('popup loads platform.js', /<script src="platform\.js"><\/script>/.test(read('popup.html')));
-check('build copies platform.js', read('scripts/build.mjs').includes("'platform.js'"));
-for (const f of ['background.js', 'shared.js', 'content.js', 'popup.js']) {
+check('chrome loads one content bundle', JSON.stringify(chromeManifest.content_scripts[0].js) === '["content.js"]');
+check('firefox loads one background bundle', JSON.stringify(ffManifest.background.scripts) === '["background.js"]');
+check('popup loads one bundle', /<script src="popup\.js"><\/script>/.test(read('src/popup.html')));
+check('build copies the bundles', read('scripts/build.mjs').includes("'content.js'"));
+for (const f of ['src/background.js', 'src/shared.js', 'src/content.js', 'src/popup.js']) {
   check(`${f} has no engine branch`, !/\bIS_FIREFOX\b/.test(read(f)));
+  check(`${f} has no runtime global contract`, !/globalThis\.CMDK_PLATFORM|window\.PHOSPHOR/.test(read(f)));
 }
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');

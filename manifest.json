@@ -20,7 +20,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["platform.js", "phosphor-icons.js", "shared.js", "content.js"],
+      "js": ["content.js"],
       "css": ["host.css"],
       "run_at": "document_start"
     }

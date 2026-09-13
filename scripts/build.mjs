@@ -1,27 +1,24 @@
 #!/usr/bin/env node
-// Assembles per-browser builds into dist/. Chrome uses manifest.json as-is;
-// Firefox merges manifest.firefox.json (event page instead of a service
-// worker, no `favicon` permission, plus the gecko id). No dependencies.
+// Assembles per-browser builds from the tsdown output. Chrome uses
+// manifest.json as-is; Firefox merges manifest.firefox.json (event page
+// instead of a service worker, no `favicon` permission, gecko settings).
+// Run `tsdown` first (the `build` npm script does both).
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const RUNTIME = [
-  'platform.js', 'background.js', 'content.js', 'shared.js',
-  'popup.html', 'popup.js', 'palette.css', 'host.css', 'phosphor-icons.js',
-  'fonts', 'icons'
-];
+const BUNDLES = ['content.js', 'background.js', 'popup.js'];
+const STATIC = ['popup.html', 'palette.css', 'host.css', 'fonts', 'icons'];
 
-const readJson = async file => JSON.parse(await readFile(join(ROOT, file), 'utf8'));
+const readJson = async (file) => JSON.parse(await readFile(join(ROOT, file), 'utf8'));
 
 async function emit(target, manifest) {
   const out = join(ROOT, 'dist', target);
   await rm(out, { recursive: true, force: true });
   await mkdir(out, { recursive: true });
-  for (const item of RUNTIME) {
-    await cp(join(ROOT, item), join(out, item), { recursive: true });
-  }
+  for (const file of BUNDLES) await cp(join(ROOT, 'build', file), join(out, file));
+  for (const item of STATIC) await cp(join(ROOT, 'src', item), join(out, item), { recursive: true });
   await writeFile(join(out, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   console.log(`built dist/${target}`);
 }
@@ -33,7 +30,7 @@ const firefoxManifest = {
   ...chromeManifest,
   ...firefox,
   background: firefox.background,
-  permissions: (firefox.permissions ?? chromeManifest.permissions).filter(p => p !== 'favicon')
+  permissions: (firefox.permissions ?? chromeManifest.permissions).filter((p) => p !== 'favicon'),
 };
 
 await emit('chrome', chromeManifest);

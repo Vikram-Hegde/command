@@ -1,6 +1,6 @@
 # CommandK
 
-A fast, keyboard-first command palette for Chrome and Firefox — tabs, history, bookmarks, actions, and a calculator in one `⌘K` overlay. Manifest V3, no runtime dependencies, and a tiny zero-dependency script to assemble per-browser builds.
+A fast, keyboard-first command palette for Chrome and Firefox — tabs, history, bookmarks, actions, and a calculator in one `⌘K` overlay. Manifest V3, zero runtime dependencies, bundled with [tsdown](https://tsdown.dev) and linted/formatted with the oxc toolchain.
 
 Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> (<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> on macOS) on any page:
 
@@ -17,12 +17,13 @@ Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> (<kbd>⌘</kbd>+<kbd>Shift</
 The extension is not on the Chrome Web Store or AMO yet. To run it from source:
 
 ```sh
-npm run build      # writes dist/chrome and dist/firefox
+pnpm install
+pnpm build         # writes dist/chrome and dist/firefox
 ```
 
 **Chrome / Edge / Brave / Arc:** open `chrome://extensions`, enable **Developer mode**, click **Load unpacked** and select `dist/chrome`.
 
-**Firefox:** open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…** and select `dist/firefox/manifest.json`. To develop with auto-reload, run `npm run run:firefox` instead.
+**Firefox:** open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…** and select `dist/firefox/manifest.json`. To develop with auto-reload, run `pnpm run:firefox` instead.
 
 Then press <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> to open the palette. In Firefox, if <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> is grabbed by the Web Console, rebind it at `about:addons` → gear → **Manage Extension Shortcuts**.
 
@@ -33,10 +34,10 @@ Firefox Release only installs **signed** add-ons, so a temporary load disappears
 - **Sign it yourself (regular Firefox):** create API keys at [AMO](https://addons.mozilla.org/developers/addon/api/key/), then
   ```sh
   export AMO_API_KEY=... AMO_API_SECRET=...
-  npm run sign:firefox
+  pnpm sign:firefox
   ```
   and install the resulting `.xpi` via `about:addons` → gear → **Install Add-on From File…**. Unlisted add-ons aren't searchable on AMO but are signed and auto-update.
-- **Firefox Developer Edition / Nightly:** set `xpinstall.signatures.required` to `false` in `about:config`, run `npm run package:firefox`, rename the generated `.zip` to `.xpi`, and install it from file.
+- **Firefox Developer Edition / Nightly:** set `xpinstall.signatures.required` to `false` in `about:config`, run `pnpm package:firefox`, rename the generated `.zip` to `.xpi`, and install it from file.
 
 ## Keyboard reference
 
@@ -44,26 +45,26 @@ The palette opens in **SEARCH** mode. Press <kbd>Esc</kbd> to enter **NORMAL** m
 
 ### Modes (in NORMAL)
 
-| Key | Scope |
-| --- | --- |
-| `t` | Open tabs |
+| Key | Scope                       |
+| --- | --------------------------- |
+| `t` | Open tabs                   |
 | `h` | History and recently closed |
-| `b` | Bookmarks |
-| `a` | Browser actions |
-| `/` | Search everything |
-| `i` | Search the current scope |
-| `?` | Toggle the help cheatsheet |
+| `b` | Bookmarks                   |
+| `a` | Browser actions             |
+| `/` | Search everything           |
+| `i` | Search the current scope    |
+| `?` | Toggle the help cheatsheet  |
 
 ### Navigation
 
-| Key | Action |
-| --- | --- |
-| <kbd>↑</kbd>/<kbd>↓</kbd> or `j`/`k` | Move selection |
-| <kbd>Enter</kbd> | Open |
-| <kbd>Shift</kbd>+<kbd>Enter</kbd> | Open in a new tab |
-| <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Enter</kbd> | Open in background |
-| <kbd>Esc</kbd> | Back one step (help → NORMAL → close) |
-| `q` | Close palette |
+| Key                                           | Action                                |
+| --------------------------------------------- | ------------------------------------- |
+| <kbd>↑</kbd>/<kbd>↓</kbd> or `j`/`k`          | Move selection                        |
+| <kbd>Enter</kbd>                              | Open                                  |
+| <kbd>Shift</kbd>+<kbd>Enter</kbd>             | Open in a new tab                     |
+| <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Enter</kbd> | Open in background                    |
+| <kbd>Esc</kbd>                                | Back one step (help → NORMAL → close) |
+| `q`                                           | Close palette                         |
 
 ## Features
 
@@ -79,17 +80,17 @@ The palette opens in **SEARCH** mode. Press <kbd>Esc</kbd> to enter **NORMAL** m
 
 CommandK asks for broad permissions because a command palette needs to see your browsing context. Here's exactly why each one is used:
 
-| Permission | Why |
-| --- | --- |
-| `tabs` | List, switch, and manage open tabs |
-| `history` | Search browsing history |
-| `bookmarks` | Read bookmarks |
-| `sessions` | Reopen recently closed tabs |
-| `downloads` | Save screenshots |
-| `favicon` | Read icons from Chrome's favicon cache |
-| `storage` | Remember your chosen search engine |
-| `activeTab`, `scripting` | Inject the overlay into the current tab when needed |
-| `<all_urls>` (content script) | Show the `⌘K` overlay on any page you're on |
+| Permission                    | Why                                                 |
+| ----------------------------- | --------------------------------------------------- |
+| `tabs`                        | List, switch, and manage open tabs                  |
+| `history`                     | Search browsing history                             |
+| `bookmarks`                   | Read bookmarks                                      |
+| `sessions`                    | Reopen recently closed tabs                         |
+| `downloads`                   | Save screenshots                                    |
+| `favicon`                     | Read icons from Chrome's favicon cache              |
+| `storage`                     | Remember your chosen search engine                  |
+| `activeTab`, `scripting`      | Inject the overlay into the current tab when needed |
+| `<all_urls>` (content script) | Show the `⌘K` overlay on any page you're on         |
 
 `favicon` is Chrome-only; the Firefox build omits it and falls back to the tab's own icon. In Firefox, host permissions are revocable, so if the overlay stops appearing, re-grant access from the add-on's Permissions tab.
 
@@ -97,45 +98,68 @@ CommandK asks for broad permissions because a command palette needs to see your 
 
 ## Project layout
 
-| File | Role |
-| --- | --- |
-| `manifest.json` | MV3 manifest (Chrome) |
-| `manifest.firefox.json` | Firefox overrides merged by the build script |
-| `scripts/build.mjs` | Zero-dependency build: emits `dist/chrome` and `dist/firefox` |
-| `scripts/test.mjs` | Capability-matrix test across both engine profiles |
-| `platform.js` | The only file that knows about browser differences: capabilities + adapters |
-| `shared.js` | Fuzzy matching, URL/calc helpers, action registry, result building and rendering — shared by both surfaces |
-| `content.js` | The in-page overlay (shadow DOM) |
-| `popup.html` / `popup.js` | The toolbar popup mini palette |
-| `background.js` | Service worker: browser data and action execution |
-| `palette.css` | Palette styles (adopted into the shadow root) |
-| `host.css` | Positions the shadow host on the page |
-| `phosphor-icons.js` | Bundled Phosphor (Bold) icon set as an SVG map |
-| `fonts/` | Bundled Inter weights |
+| Path                              | Role                                                                                                       |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `manifest.json`                   | MV3 manifest (Chrome)                                                                                      |
+| `manifest.firefox.json`           | Firefox overrides merged by the build script                                                               |
+| `tsdown.config.js`                | Bundler config: one IIFE bundle per entry point                                                            |
+| `jsconfig.json`                   | JSDoc type-checking (`pnpm typecheck`) with `@types/chrome`                                                |
+| `scripts/build.mjs`               | Assembles `dist/chrome` and `dist/firefox` from the bundles + static assets                                |
+| `scripts/test.mjs`                | Capability-matrix test across both engine profiles                                                         |
+| `src/platform.js`                 | The only module that knows about browser differences: capabilities + adapters                              |
+| `src/shared.js`                   | Fuzzy matching, URL/calc helpers, action registry, result building and rendering — shared by both surfaces |
+| `src/content.js`                  | The in-page overlay (shadow DOM) — bundled to `content.js`                                                 |
+| `src/popup.html` / `src/popup.js` | The toolbar popup mini palette — bundled to `popup.js`                                                     |
+| `src/background.js`               | Service worker: browser data and action execution — bundled to `background.js`                             |
+| `src/phosphor-icons.js`           | Bundled Phosphor (Bold) icon set (ESM export imported by the UI)                                           |
+| `src/palette.css`                 | Palette styles (adopted into the shadow root)                                                              |
+| `src/host.css`                    | Positions the shadow host on the page                                                                      |
+| `src/fonts/`, `src/icons/`        | Bundled Inter weights and extension icons                                                                  |
+
+The three entry points (`content`, `background`, `popup`) are bundled into
+self-contained IIFEs, so each manifest only lists a single script and the old
+script-order coupling is gone.
 
 ## Development
 
-There is no bundler. `npm run build` copies the runtime files into `dist/chrome` and `dist/firefox` and writes the right manifest for each (Chrome's service worker vs. Firefox's event page). Reload the extension after editing. The overlay re-fetches `palette.css` on every open, so CSS changes show up without reloading the page.
+`pnpm build` runs tsdown (Rolldown) to produce one self-contained IIFE per entry
+point in `build/`, then assembles `dist/chrome` and `dist/firefox` with the right
+manifest and static assets (Chrome's service worker vs. Firefox's event page).
+Reload the extension after editing. The overlay re-fetches `palette.css` on every
+open, so CSS changes show up without reloading the page.
 
 Commands:
 
-- `npm run build` — assemble both targets.
-- `npm test` — verify capabilities and action gating for both engines.
-- `npm run run:firefox` — build and launch a temporary Firefox profile.
-- `npm run package:firefox` — build a zip in `dist/` via `web-ext`.
+- `pnpm build` — bundle and assemble both targets.
+- `pnpm dev` — rebuild the JS bundles in watch mode.
+- `pnpm test` — verify capabilities and action gating for both engines.
+- `pnpm typecheck` — JSDoc type-checking via `tsc` (`checkJs` + `@types/chrome`).
+- `pnpm lint` / `pnpm lint:fix` — oxlint.
+- `pnpm format` / `pnpm format:check` — oxfmt.
+- `pnpm run:firefox` — build and launch a temporary Firefox profile.
+- `pnpm package:firefox` — build a zip in `dist/` via `web-ext`.
 
 ### Cross-browser architecture
 
-`platform.js` is the single source of truth for engine differences. It runs first in every context (content scripts, popup, and the background) and exposes a capability object plus a few adapters:
+`src/platform.js` is the single source of truth for engine differences. It
+exports a capability object plus a few adapters:
 
 ```js
-CMDK_PLATFORM.caps       // { faviconCache, canDiscard, canGroup, dataUrlDownloads, captureNeedsRepaint }
-CMDK_PLATFORM.page(id)   // chrome://settings vs about:preferences
-CMDK_PLATFORM.saveImage(dataUrl, filename)   // data: vs blob: downloads
-CMDK_PLATFORM.beforeCapture()                // repaint wait where needed
+import { caps, page, saveImage, beforeCapture } from './platform.js';
+
+caps; // { faviconCache, canDiscard, canGroup, dataUrlDownloads, captureNeedsRepaint }
+page('settings'); // chrome://settings vs about:preferences
+saveImage(dataUrl, filename); // data: vs blob: downloads
+beforeCapture(); // repaint wait where needed
 ```
 
-Generic code depends on capability names, never on the browser. For example an action declares `requires: 'canDiscard'` or `before: 'beforeCapture'` in the registry (`shared.js`), and is hidden or hooked accordingly. Adding a third engine means writing one adapter and a manifest, not editing call sites. `npm test` loads `platform.js` and `shared.js` under both manifest profiles and asserts the expected capabilities, action visibility, and wiring, so a change for one browser can't silently regress the other.
+Generic code depends on capability names, never on the browser. An action
+declares `requires: 'canDiscard'` or `before: beforeCapture` in the registry
+(`src/shared.js`) and is hidden or hooked accordingly. Adding a third engine
+means writing one adapter and a manifest, not editing call sites. `pnpm test`
+loads `platform.js` and `shared.js` under both manifest profiles and asserts the
+expected capabilities, action visibility, and wiring, so a change for one
+browser can't silently regress the other.
 
 ## Credits
 

@@ -1,15 +1,6 @@
 {
-  "background": { "scripts": ["platform.js", "background.js"] },
-  "permissions": [
-    "tabs",
-    "history",
-    "bookmarks",
-    "storage",
-    "activeTab",
-    "scripting",
-    "sessions",
-    "downloads"
-  ],
+  "background": { "scripts": ["background.js"] },
+  "permissions": ["tabs", "history", "bookmarks", "storage", "activeTab", "scripting", "sessions", "downloads"],
   "browser_specific_settings": {
     "gecko": {
       "id": "commandk@vikramhegde.dev",

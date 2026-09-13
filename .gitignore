@@ -6,12 +6,17 @@ Thumbs.db
 .idea/
 
 # Packaged extension artifacts
+build/
 dist/
 node_modules/
 *.zip
 *.crx
 *.pem
 *.key
+
+# Other package managers
+package-lock.json
+yarn.lock
 
 # Local scratch/testing
 _test_*
