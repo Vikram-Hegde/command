@@ -1,0 +1,59 @@
+{
+  "manifest_version": 3,
+  "name": "CommandK",
+  "version": "0.1.0",
+  "description": "⌘K palette: tabs, history, bookmarks, actions, calculator, quick search.",
+  "permissions": [
+    "tabs",
+    "history",
+    "bookmarks",
+    "storage",
+    "activeTab",
+    "scripting",
+    "sessions",
+    "downloads",
+    "favicon"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["phosphor-icons.js", "shared.js", "content.js"],
+      "css": ["host.css"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["palette.css", "fonts/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "CommandK",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "commands": {
+    "open-palette": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+K",
+        "mac": "Command+Shift+K"
+      },
+      "description": "Open CommandK palette"
+    }
+  }
+}
