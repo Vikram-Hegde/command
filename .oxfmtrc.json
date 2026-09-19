@@ -3,5 +3,5 @@
   "printWidth": 120,
   "singleQuote": true,
   "sortPackageJson": true,
-  "ignorePatterns": ["dist/**", "build/**", "src/phosphor-icons.js"]
+  "ignorePatterns": ["dist/**", "build/**", "src/phosphor-icons.ts"]
 }

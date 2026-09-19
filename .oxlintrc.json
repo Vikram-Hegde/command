@@ -9,5 +9,5 @@
     "es2024": true,
     "webextensions": true
   },
-  "ignorePatterns": ["dist/**", "build/**", "node_modules/**", "src/phosphor-icons.js"]
+  "ignorePatterns": ["dist/**", "build/**", "node_modules/**", "src/phosphor-icons.ts"]
 }
