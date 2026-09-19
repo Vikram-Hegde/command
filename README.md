@@ -1,47 +1,47 @@
 # CommandK
 
-A fast, keyboard-first command palette for Chrome and Firefox — tabs, history, bookmarks, actions, and a calculator in one `⌘K` overlay. Manifest V3, zero runtime dependencies, bundled with [tsdown](https://tsdown.dev) and linted/formatted with the oxc toolchain.
+You get a keyboard-first palette for Chrome and Firefox. Press `⌘K` to search tabs, history, bookmarks, and actions, or run calculations. It targets Manifest V3, ships with no runtime dependencies, and builds with tsdown and oxc.
 
 Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> (<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> on macOS) on any page:
 
-- **Search everything** — open tabs, history, bookmarks, and actions, ranked by relevance.
-- **Scope with modes** — vim-style scopes for tabs, history, bookmarks, or actions.
-- **Do the math** — type `12 * (3 + 4)` and hit Enter to copy the result.
-- **Act on the current tab** — mute, pin, duplicate, discard, screenshot, group, close others, and more.
-- **Go anywhere** — type a URL to open it, or free text to search your engine.
+- **Search everything:** open tabs, history, bookmarks, and actions ranked by relevance.
+- **Scope with modes:** use vim-style scopes for tabs, history, bookmarks, or actions.
+- **Do the math:** type `12 * (3 + 4)` and hit Enter to copy the result.
+- **Act on the current tab:** mute, pin, duplicate, discard, screenshot, group, close others, and more.
+- **Go anywhere:** type a URL to open it, or type free text to search your engine.
 
-<p align="center"><em>Tip: the extension also ships a mini palette in the toolbar popup that works on <code>chrome://</code>, error, and store pages where content scripts are blocked.</em></p>
+<p align="center"><em>Tip: you also get a mini palette in the toolbar popup. It works on <code>chrome://</code>, error, and store pages where Chrome blocks content scripts.</em></p>
 
 ## Install (load unpacked)
 
-The extension is not on the Chrome Web Store or AMO yet. To run it from source:
+You won't find this on the Chrome Web Store or AMO yet. Build it from source:
 
 ```sh
 pnpm install
 pnpm build         # writes dist/chrome and dist/firefox
 ```
 
-**Chrome / Edge / Brave / Arc:** open `chrome://extensions`, enable **Developer mode**, click **Load unpacked** and select `dist/chrome`.
+**Chrome / Edge / Brave / Arc:** open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick `dist/chrome`.
 
-**Firefox:** open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…** and select `dist/firefox/manifest.json`. To develop with auto-reload, run `pnpm run:firefox` instead.
+**Firefox:** open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on** and pick `dist/firefox/manifest.json`. For auto-reload during development, run `pnpm run:firefox`.
 
-Then press <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> to open the palette. In Firefox, if <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> is grabbed by the Web Console, rebind it at `about:addons` → gear → **Manage Extension Shortcuts**.
+Then press <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> to open the palette. Firefox reserves <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> for the Web Console. If the palette does not open, rebind the shortcut at `about:addons` → gear → **Manage Extension Shortcuts**.
 
-### Permanent Firefox install
+### Keep it after restart (Firefox)
 
-Firefox Release only installs **signed** add-ons, so a temporary load disappears on restart. To keep it permanently:
+Firefox Release blocks unsigned add-ons, so a temporary install disappears when you quit. Pick one path:
 
 - **Sign it yourself (regular Firefox):** create API keys at [AMO](https://addons.mozilla.org/developers/addon/api/key/), then
   ```sh
   export AMO_API_KEY=... AMO_API_SECRET=...
   pnpm sign:firefox
   ```
-  and install the resulting `.xpi` via `about:addons` → gear → **Install Add-on From File…**. Unlisted add-ons aren't searchable on AMO but are signed and auto-update.
-- **Firefox Developer Edition / Nightly:** set `xpinstall.signatures.required` to `false` in `about:config`, run `pnpm package:firefox`, rename the generated `.zip` to `.xpi`, and install it from file.
+  Install the `.xpi` it produces via `about:addons` → gear → **Install Add-on From File**. AMO lists unlisted add-ons as signed and they still auto-update, you just can't search for them.
+- **Developer Edition / Nightly:** set `xpinstall.signatures.required` to `false` in `about:config`, run `pnpm package:firefox`, rename the `.zip` to `.xpi`, and install it from file.
 
 ## Keyboard reference
 
-The palette opens in **SEARCH** mode. Press <kbd>Esc</kbd> to enter **NORMAL** mode, where single keys are commands.
+You start in **SEARCH** mode. Press <kbd>Esc</kbd> to switch to **NORMAL** mode and use single keys as commands.
 
 ### Modes (in NORMAL)
 
@@ -68,17 +68,17 @@ The palette opens in **SEARCH** mode. Press <kbd>Esc</kbd> to enter **NORMAL** m
 
 ## Features
 
-- **One ranked list** — open tabs always come first, then matching actions, bookmarks, and history. A typed URL is pinned near the top; the generic "search the web" row is the fallback at the bottom.
-- **Fuzzy matching** — subsequence scoring that favors word boundaries and consecutive runs.
-- **Scoped modes** — narrow the list to just tabs or just history without leaving the keyboard.
-- **Calculator** — a safe recursive-descent evaluator (no `eval`): `+ - * / ^`, parentheses, decimals, unary minus, and postfix `%`.
-- **Vim-style help** — press `?` for a cheatsheet of every shortcut.
-- **Favicons** — falls back through the tab icon, Chrome's icon cache, and a favicon service, down to a clean glyph.
-- **Works everywhere** — the overlay injects into normal pages; the popup mini palette covers restricted pages.
+- **One ranked list:** you see open tabs first, then matching actions, bookmarks, and history. The palette pins a typed URL near the top and keeps the generic “search the web” row at the bottom as fallback.
+- **Fuzzy matching:** the palette scores by word boundaries and consecutive runs, so `gh` finds GitHub.
+- **Scoped modes:** you narrow the list to tabs or history without lifting your hands from the keyboard.
+- **Calculator:** a safe recursive-descent evaluator with no `eval`. It handles `+ - * / ^`, parentheses, decimals, unary minus, and postfix `%`.
+- **Vim-style help:** press `?` for a cheatsheet of all shortcuts.
+- **Favicons:** you get the tab icon first, then Chrome’s cache, then a favicon service, then a glyph.
+- **Works where you need it:** the overlay runs on normal pages, the toolbar popup covers pages where Chrome blocks scripts.
 
 ## Permissions
 
-CommandK asks for broad permissions because a command palette needs to see your browsing context. Here's exactly why each one is used:
+CommandK needs broad permissions because a palette has to read your browsing context. You grant each one to:
 
 | Permission                    | Why                                                 |
 | ----------------------------- | --------------------------------------------------- |
@@ -92,35 +92,30 @@ CommandK asks for broad permissions because a command palette needs to see your 
 | `activeTab`, `scripting`      | Inject the overlay into the current tab when needed |
 | `<all_urls>` (content script) | Show the `⌘K` overlay on any page you're on         |
 
-`favicon` is Chrome-only; the Firefox build omits it and falls back to the tab's own icon. In Firefox, host permissions are revocable, so if the overlay stops appearing, re-grant access from the add-on's Permissions tab.
+`favicon` ships on Chrome alone. Firefox builds omit it and use the tab’s own icon. You can revoke host permissions in Firefox, so if the overlay stops showing, re-enable access in the add-on’s Permissions tab.
 
-**Privacy:** everything runs locally in your browser. CommandK sends no data to any server, has no analytics, and only talks to Chrome's own extension APIs. The favicon fallback requests an icon from `google.com/s2/favicons` for sites whose icon isn't in Chrome's cache — nothing else leaves your machine.
+**Privacy:** everything stays on your machine. CommandK sends nothing to a server and collects no analytics. It calls Chrome’s extension APIs and nothing else. For sites missing an icon in Chrome’s cache, it fetches one from `google.com/s2/favicons`. Nothing else leaves your browser.
 
 ## Development
 
-`pnpm build` runs tsdown (Rolldown) to produce one self-contained IIFE per entry
-point in `build/`, then assembles `dist/chrome` and `dist/firefox` with the right
-manifest and static assets (Chrome's service worker vs. Firefox's event page).
-Reload the extension after editing. The overlay re-fetches `palette.css` on every
-open, so CSS changes show up without reloading the page.
+Run `pnpm build`. tsdown bundles each entry as a self-contained IIFE in `build/`, then the build script assembles `dist/chrome` and `dist/firefox` with the right manifest and assets. Chrome gets a service worker, Firefox gets an event page. Reload the extension after you edit. The overlay fetches `palette.css` again on each open, so you see CSS changes without a page reload.
 
 Commands:
 
-- `pnpm build` — bundle and assemble both targets.
-- `pnpm dev` — rebuild the JS bundles in watch mode.
-- `pnpm test` — verify capabilities and action gating for both engines.
-- `pnpm typecheck` — JSDoc type-checking via `tsc` (`checkJs` + `@types/chrome`).
-- `pnpm lint` / `pnpm lint:fix` — oxlint.
-- `pnpm format` / `pnpm format:check` — oxfmt.
-- `pnpm run:firefox` — build and launch a temporary Firefox profile.
-- `pnpm package:firefox` — build a zip in `dist/` via `web-ext`.
+- `pnpm build`: bundle and assemble both targets.
+- `pnpm dev`: rebuild the bundles in watch mode.
+- `pnpm test`: check capabilities and action gating for both engines.
+- `pnpm typecheck`: run `tsc` with `strict` and `@types/chrome`.
+- `pnpm lint` / `pnpm lint:fix`: oxlint.
+- `pnpm format` / `pnpm format:check`: oxfmt.
+- `pnpm run:firefox`: build and launch a temp Firefox profile.
+- `pnpm package:firefox`: build a zip in `dist/` with `web-ext`.
 
 ### Cross-browser architecture
 
-`src/platform.js` is the single source of truth for engine differences. It
-exports a capability object plus a few adapters:
+`src/platform.ts` holds all engine differences. It exports a capability object and a few adapters:
 
-```js
+```ts
 import { caps, page, saveImage, beforeCapture } from './platform.js';
 
 caps; // { faviconCache, canDiscard, canGroup, dataUrlDownloads, captureNeedsRepaint }
@@ -129,13 +124,7 @@ saveImage(dataUrl, filename); // data: vs blob: downloads
 beforeCapture(); // repaint wait where needed
 ```
 
-Generic code depends on capability names, never on the browser. An action
-declares `requires: 'canDiscard'` or `before: beforeCapture` in the registry
-(`src/shared.js`) and is hidden or hooked accordingly. Adding a third engine
-means writing one adapter and a manifest, not editing call sites. `pnpm test`
-loads `platform.js` and `shared.js` under both manifest profiles and asserts the
-expected capabilities, action visibility, and wiring, so a change for one
-browser can't silently regress the other.
+You write generic code against capability names, never against a browser name. You tag an action with `requires: 'canDiscard'` or `before: beforeCapture` in `src/shared.ts`, and the palette hides it or runs the hook as needed. To support a third engine, you add one adapter and a manifest. You don't touch call sites. The test suite loads `platform.ts` and `shared.ts` under both manifests and checks capabilities, action visibility, and wiring, so a fix for one browser can't break the other.
 
 ## Credits
 
