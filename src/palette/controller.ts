@@ -1,7 +1,4 @@
-// @ts-check
-/* palette/controller.js — deduplicates content.js/popup.js logic.
-   Hosts provide DOM refs + callbacks; controller owns searching, filtering,
-   selection, and UI transitions. */
+/* palette/controller.ts — deduplicates content/popup logic. */
 import { fetchData } from '../data/fetch.js';
 import { buildItems } from '../search/ranking.js';
 import { itemsHtml, emptyHtml, advanceFav } from '../ui/render.js';
@@ -9,54 +6,51 @@ import { helpHtml, modeById, commandIntent } from '../modes.js';
 import { ENGINES, nextEngine } from '../engines.js';
 import { getEngine, setEngine } from '../settings.js';
 import { api } from '../platform.js';
+import type { ResultItem, DataCache } from '../shared.js';
 
-/**
- * @typedef {Object} ControllerOpts
- * @property {boolean} includePageOnly
- * @property {number} [tabLimit]
- * @property {number} [tabMatchLimit]
- * @property {number} [maxItems]
- * @property {HTMLInputElement} input
- * @property {HTMLElement} list
- * @property {HTMLElement} chip
- * @property {HTMLElement} hints
- * @property {Record<string,string>} PH
- * @property {() => void} [onClose]
- * @property {(msg:string)=>void} [onToast]
- * @property {(url:string, e:Event, newTab:boolean, bg:boolean)=>Promise<void>} onOpenUrl
- * @property {(actionId:string)=>Promise<void>} onAction
- */
+export interface ControllerOpts {
+  includePageOnly: boolean;
+  tabLimit?: number;
+  tabMatchLimit?: number;
+  maxItems?: number;
+  input: HTMLInputElement;
+  list: HTMLElement;
+  chip: HTMLElement;
+  hints: HTMLElement;
+  PH: Record<string, string>;
+  onClose?: () => void;
+  onToast?: (msg: string) => void;
+  onOpenUrl: (url: string, e: Event, newTab: boolean, bg: boolean) => Promise<void>;
+  onAction: (actionId: string) => Promise<void>;
+}
 
-/**
- * @param {ControllerOpts} opts
- */
-export function createPaletteController(opts) {
+export function createPaletteController(opts: ControllerOpts) {
   const { input, list, chip, hints, PH, includePageOnly, onClose, onToast, onOpenUrl, onAction } = opts;
   const tabLimit = opts.tabLimit ?? 6;
   const tabMatchLimit = opts.tabMatchLimit ?? 8;
   const maxItems = opts.maxItems ?? 60;
 
   let mode = 'all';
-  let ui = 'search';
+  let ui: 'search' | 'normal' = 'search';
   let help = false;
-  let filtered = [];
+  let filtered: ResultItem[] = [];
   let sel = 0;
-  let cache = { tabs: [], bookmarks: [], history: [], closed: [] };
+  let cache: DataCache = { tabs: [], bookmarks: [], history: [], closed: [] };
   let engine = 'google';
-  let debounce = /** @type {number|null} */ (null);
+  let debounce: ReturnType<typeof setTimeout> | null = null;
   let seq = 0;
 
   getEngine().then((e) => {
     engine = e;
   });
 
-  const searchPlaceholder = () => modeById(mode).placeholder || 'Type a command…';
+  const searchPlaceholder = (): string => modeById(mode).placeholder || 'Type a command…';
   const NORMAL_FOOTER =
     '<span><b>t</b> tabs</span><span><b>h</b> history</span><span><b>b</b> bookmarks</span><span><b>a</b> actions</span><span><b>/</b> search</span><span><b>?</b> help</span>';
   const SEARCH_FOOTER =
     '<span><b>↑↓</b> navigate</span><span><b>↵</b> open</span><span><b>⇧↵</b> new tab</span><span><b>esc</b> normal mode</span>';
 
-  function renderStatus() {
+  function renderStatus(): void {
     if (!chip) return;
     const m = modeById(mode);
     if (help) chip.textContent = '? help';
@@ -68,7 +62,6 @@ export function createPaletteController(opts) {
     if (hints) {
       const isPopupHints = hints.id === 'hints';
       if (isPopupHints) {
-        // popup uses <kbd>, overlay uses <b>
         const normal = NORMAL_FOOTER.replaceAll('<b>', '<kbd>').replaceAll('</b>', '</kbd>');
         const search = SEARCH_FOOTER.replaceAll('<b>', '<kbd>').replaceAll('</b>', '</kbd>');
         hints.innerHTML = help
@@ -86,7 +79,7 @@ export function createPaletteController(opts) {
     }
   }
 
-  function setUI(next) {
+  function setUI(next: 'search' | 'normal'): void {
     if (next === 'normal' && help) help = false;
     ui = next;
     if (ui === 'search') setTimeout(() => input.focus(), 0);
@@ -94,7 +87,7 @@ export function createPaletteController(opts) {
     renderStatus();
   }
 
-  function setHelp(on) {
+  function setHelp(on: boolean): void {
     help = on;
     if (on) input.blur();
     else if (ui === 'search') setTimeout(() => input.focus(), 0);
@@ -102,7 +95,7 @@ export function createPaletteController(opts) {
     render();
   }
 
-  function handleCmdKey(e) {
+  function handleCmdKey(e: KeyboardEvent): void {
     if (help) {
       if (e.key === '?' || e.key === 'Escape' || e.key === 'q') setHelp(false);
       return;
@@ -116,7 +109,7 @@ export function createPaletteController(opts) {
       case 'mode':
         mode = intent.mode;
         setUI('search');
-        queueRefresh(/** @type {string} */ (input.value));
+        queueRefresh(input.value);
         break;
       case 'search':
         setUI('search');
@@ -125,13 +118,13 @@ export function createPaletteController(opts) {
         setSel(sel + intent.delta);
         break;
       case 'choose':
-        choose(e);
+        void choose(e);
         break;
       case 'escape':
         if (mode !== 'all') {
           mode = 'all';
           renderStatus();
-          queueRefresh(/** @type {string} */ (input.value));
+          queueRefresh(input.value);
         } else if (onClose) onClose();
         break;
       case 'close':
@@ -140,7 +133,7 @@ export function createPaletteController(opts) {
     }
   }
 
-  async function refresh(q) {
+  async function refresh(q: string): Promise<void> {
     const cur = ++seq;
     const d = await fetchData(q);
     if (cur !== seq) return;
@@ -150,12 +143,11 @@ export function createPaletteController(opts) {
     render();
   }
 
-  function queueRefresh(q) {
-    // immediate for mode switches, callers debounce input themselves
-    refresh(q);
+  function queueRefresh(q: string): void {
+    void refresh(q);
   }
 
-  function render() {
+  function render(): void {
     if (!list) return;
     if (help) {
       list.innerHTML = helpHtml();
@@ -165,19 +157,19 @@ export function createPaletteController(opts) {
     list.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
   }
 
-  function setSel(n) {
+  function setSel(n: number): void {
     sel = Math.max(0, Math.min(n, filtered.length - 1));
     const nodes = list.querySelectorAll('.cmdk-item');
     nodes.forEach((el, i) => el.classList.toggle('selected', i === sel));
     nodes[sel]?.scrollIntoView({ block: 'nearest' });
   }
 
-  function onInput() {
+  function onInput(): void {
     if (debounce) clearTimeout(debounce);
-    debounce = setTimeout(() => refresh(input.value), 140);
+    debounce = setTimeout(() => void refresh(input.value), 140);
   }
 
-  function onKey(e) {
+  function onKey(e: KeyboardEvent): void {
     e.stopPropagation();
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -191,7 +183,7 @@ export function createPaletteController(opts) {
       setSel(sel - 1);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      choose(e);
+      void choose(e);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       setUI('normal');
@@ -201,18 +193,18 @@ export function createPaletteController(opts) {
     }
   }
 
-  async function choose(e) {
+  async function choose(e: Event & { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }): Promise<void> {
     const it = filtered[sel];
     const q = input.value;
     if (!it) {
       if (q.trim() && mode === 'all') {
-        const url = ENGINES[engine](q.trim());
+        const url = ENGINES[engine as keyof typeof ENGINES](q.trim());
         await onOpenUrl(url, e, false, false);
       }
       return;
     }
-    const newTab = e.shiftKey;
-    const bg = e.ctrlKey || e.metaKey;
+    const newTab = (e as KeyboardEvent).shiftKey;
+    const bg = (e as KeyboardEvent).ctrlKey || (e as KeyboardEvent).metaKey;
     if (it.kind === 'tab') {
       await api.runtime.sendMessage({
         type: 'EXEC',
@@ -222,12 +214,12 @@ export function createPaletteController(opts) {
       if (onClose) onClose();
     } else if (it.kind === 'calc') {
       try {
-        await navigator.clipboard.writeText(it.value);
+        await navigator.clipboard.writeText(it.value!);
       } catch {}
       if (onToast) onToast(`Copied ${it.value}`);
       if (onClose) onClose();
     } else if (it.kind === 'action') {
-      const def = it.def;
+      const def = it.def!;
       if (def.id === 'engine') {
         engine = nextEngine(engine);
         setEngine(engine);
@@ -236,7 +228,6 @@ export function createPaletteController(opts) {
         if (onToast) onToast(`Search engine: ${engine}`);
         return;
       }
-      // copy-* needs tab context in popup; delegate to host instead of running page-local directly
       const isCopyFromPopup = !includePageOnly && (def.id === 'copy-url' || def.id === 'copy-title');
       if (def.local && !isCopyFromPopup) {
         if (onClose) onClose();
@@ -248,60 +239,57 @@ export function createPaletteController(opts) {
       if (def.before) await def.before();
       await onAction(def.id);
     } else {
-      await onOpenUrl(it.url, e, newTab, bg);
+      await onOpenUrl(it.url!, e, newTab, bg);
     }
   }
 
-  // wiring helpers
-  function bind() {
+  function bind(): void {
     input.addEventListener('input', onInput);
-    input.addEventListener('keydown', onKey);
+    input.addEventListener('keydown', onKey as EventListener);
     input.addEventListener('click', () => {
       if (ui === 'normal' || help) setUI('search');
     });
-    for (const t of ['keypress', 'keyup']) input.addEventListener(t, (e) => e.stopPropagation());
+    for (const t of ['keypress', 'keyup'] as const) input.addEventListener(t, (e) => e.stopPropagation());
     list.addEventListener(
       'error',
       (e) => {
-        const t = /** @type {Element} */ (e.target);
-        if (t && t.tagName === 'IMG' && t.hasAttribute('data-fav')) advanceFav(/** @type {HTMLImageElement} */ (t), PH);
+        const t = e.target as Element;
+        if (t && t.tagName === 'IMG' && t.hasAttribute('data-fav')) advanceFav(t as HTMLImageElement, PH);
       },
       true,
     );
     list.addEventListener('click', (e) => {
-      const target = /** @type {Element} */ (e.target);
-      const el = target.closest('.cmdk-item');
+      const target = e.target as Element;
+      const el = target.closest('.cmdk-item') as HTMLElement | null;
       if (!el) return;
-      sel = +(/** @type {HTMLElement} */ (el).dataset.i);
-      choose(e);
+      sel = Number((el as HTMLElement).dataset.i);
+      void choose(e as unknown as Event & { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean });
     });
-    // click outside handled by host (overlay)
   }
 
-  // expose state for hosts
   return {
-    get mode() {
+    get mode(): string {
       return mode;
     },
-    set mode(v) {
+    set mode(v: string) {
       mode = v;
     },
-    get ui() {
+    get ui(): string {
       return ui;
     },
-    get help() {
+    get help(): boolean {
       return help;
     },
-    get engine() {
+    get engine(): string {
       return engine;
     },
-    set engine(v) {
+    set engine(v: string) {
       engine = v;
     },
-    get filtered() {
+    get filtered(): ResultItem[] {
       return filtered;
     },
-    get selected() {
+    get selected(): number {
       return sel;
     },
     refresh,
@@ -314,6 +302,6 @@ export function createPaletteController(opts) {
     setSel,
     choose,
     bind,
-    getCache: () => cache,
+    getCache: (): DataCache => cache,
   };
 }

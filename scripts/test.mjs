@@ -60,7 +60,7 @@ check('chrome loads one content bundle', JSON.stringify(chromeManifest.content_s
 check('firefox loads one background bundle', JSON.stringify(ffManifest.background.scripts) === '["background.js"]');
 check('popup loads one bundle', /<script src="popup\.js"><\/script>/.test(read('src/popup.html')));
 check('build copies the bundles', read('scripts/build.mjs').includes("'content.js'"));
-for (const f of ['src/background.js', 'src/shared.js', 'src/content.js', 'src/popup.js']) {
+for (const f of ['src/background.ts', 'src/shared.ts', 'src/content.ts', 'src/popup.ts']) {
   check(`${f} has no engine branch`, !/\bIS_FIREFOX\b/.test(read(f)));
   check(`${f} has no runtime global contract`, !/globalThis\.CMDK_PLATFORM|window\.PHOSPHOR/.test(read(f)));
 }

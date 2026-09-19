@@ -1,17 +1,14 @@
-// @ts-check
-/* search/calculator.js — safe math evaluator (no eval), supports + - * / ^, parens, %, unary. */
+/* search/calculator.ts — safe math evaluator (no eval), supports + - * / ^, parens, %, unary. */
 
-/** @param {string} q */
-export const isMath = (q) => /^[0-9+\-*/().%^\s]+$/.test(q.trim()) && /\d/.test(q) && /[+\-*/%^]/.test(q);
+export const isMath = (q: string): boolean =>
+  /^[0-9+\-*/().%^\s]+$/.test(q.trim()) && /\d/.test(q) && /[+\-*/%^]/.test(q);
 
-/**
- * @param {string} q
- * @returns {number | null}
- */
-export function evalMath(q) {
+type Token = { t: string; v?: number };
+
+export function evalMath(q: string): number | null {
   const stripped = q.replace(/\s+/g, '');
   if (!stripped || stripped.length > 60) return null;
-  const tokens = [];
+  const tokens: Token[] = [];
   let pos = 0;
   while (pos < stripped.length) {
     const num = /^(?:\d+(?:\.\d+)?|\.\d+)/.exec(stripped.slice(pos));
@@ -29,19 +26,19 @@ export function evalMath(q) {
     return null;
   }
   let i = 0;
-  const peek = () => tokens[i];
-  function parseExpr() {
+  const peek = (): Token | undefined => tokens[i];
+  function parseExpr(): number {
     let v = parseTerm();
-    while (peek() && (peek().t === '+' || peek().t === '-')) {
+    while (peek() && (peek()!.t === '+' || peek()!.t === '-')) {
       const op = tokens[i++].t;
       const r = parseTerm();
       v = op === '+' ? v + r : v - r;
     }
     return v;
   }
-  function parseTerm() {
+  function parseTerm(): number {
     let v = parseFactor();
-    while (peek() && (peek().t === '*' || peek().t === '/')) {
+    while (peek() && (peek()!.t === '*' || peek()!.t === '/')) {
       const op = tokens[i++].t;
       const r = parseFactor();
       if (op === '*') v *= r;
@@ -52,34 +49,34 @@ export function evalMath(q) {
     }
     return v;
   }
-  function parseFactor() {
-    if (peek() && (peek().t === '+' || peek().t === '-')) {
+  function parseFactor(): number {
+    if (peek() && (peek()!.t === '+' || peek()!.t === '-')) {
       const op = tokens[i++].t;
       const v = parseFactor();
       return op === '-' ? -v : v;
     }
     let v = parsePrimary();
-    while (peek() && peek().t === '%') {
+    while (peek() && peek()!.t === '%') {
       i++;
       v /= 100;
     }
-    if (peek() && peek().t === '^') {
+    if (peek() && peek()!.t === '^') {
       i++;
       v = Math.pow(v, parseFactor());
     }
     return v;
   }
-  function parsePrimary() {
+  function parsePrimary(): number {
     const tk = peek();
     if (!tk) throw new Error('end');
     if (tk.t === 'n') {
       i++;
-      return tk.v;
+      return tk.v!;
     }
     if (tk.t === '(') {
       i++;
       const v = parseExpr();
-      if (!peek() || peek().t !== ')') throw new Error('paren');
+      if (!peek() || peek()!.t !== ')') throw new Error('paren');
       i++;
       return v;
     }

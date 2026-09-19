@@ -1,4 +1,3 @@
-// @ts-check
 /* CommandK overlay — injected on every page, renders into a shadow root. */
 import { api } from './platform.js';
 import { PHOSPHOR } from './phosphor-icons.js';
@@ -6,35 +5,35 @@ import { actionById } from './actions/registry.js';
 import { createPaletteController } from './palette/controller.js';
 
 (() => {
-  if (window.__cmdk_injected) return;
-  window.__cmdk_injected = true;
+  if ((window as unknown as { __cmdk_injected?: boolean }).__cmdk_injected) return;
+  (window as unknown as { __cmdk_injected: boolean }).__cmdk_injected = true;
 
-  let host = null;
-  let shadow = null;
-  /** @type {any} */
-  let els = {};
+  let host: HTMLElement | null = null;
+  let shadow: ShadowRoot | null = null;
+  const els: Record<string, HTMLElement> = {};
   let open = false;
-  /** @type {ReturnType<typeof createPaletteController> | null} */
-  let palette = null;
-  let shadowSheet = null;
+  let palette: ReturnType<typeof createPaletteController> | null = null;
+  let shadowSheet: CSSStyleSheet | null = null;
 
-  function toast(msg) {
+  function toast(msg: string): void {
     if (!els.inp) return;
-    els.inp.value = '';
-    els.inp.placeholder = msg;
+    (els.inp as HTMLInputElement).value = '';
+    (els.inp as HTMLInputElement).placeholder = msg;
     setTimeout(() => {
-      if (palette && !palette.help && palette.ui === 'search') els.inp.placeholder = palette.mode ? '' : '';
+      if (palette && !palette.help && palette.ui === 'search')
+        (els.inp as HTMLInputElement).placeholder = palette.mode ? '' : '';
       palette?.renderStatus();
     }, 1500);
   }
 
-  function buildShell() {
+  function buildShell(): void {
     host = document.createElement('div');
     host.id = 'cmdk-host';
     shadow = host.attachShadow({ mode: 'open' });
     document.documentElement.appendChild(host);
 
-    const mount = () => {
+    const mount = (): void => {
+      if (!shadow) return;
       shadow.innerHTML = `
         <style id="cmdk-css"></style>
         <div class="cmdk-overlay" id="ov">
@@ -49,51 +48,58 @@ import { createPaletteController } from './palette/controller.js';
             <div class="cmdk-footer" id="foot"></div>
           </div>
         </div>`;
-      els.ov = shadow.getElementById('ov');
-      els.css = shadow.getElementById('cmdk-css');
-      els.inp = shadow.getElementById('inp');
-      els.list = shadow.getElementById('list');
-      els.chip = shadow.getElementById('chip');
-      els.foot = shadow.getElementById('foot');
+      els.ov = shadow.getElementById('ov') as HTMLElement;
+      els.css = shadow.getElementById('cmdk-css') as HTMLElement;
+      els.inp = shadow.getElementById('inp') as HTMLElement;
+      els.list = shadow.getElementById('list') as HTMLElement;
+      els.chip = shadow.getElementById('chip') as HTMLElement;
+      els.foot = shadow.getElementById('foot') as HTMLElement;
       els.ov.addEventListener('mousedown', (e) => {
-        if (e.target.id === 'ov' || e.target.className === 'cmdk-overlay') close();
+        if ((e.target as HTMLElement).id === 'ov' || (e.target as HTMLElement).className === 'cmdk-overlay') close();
       });
 
       palette = createPaletteController({
         includePageOnly: true,
-        input: els.inp,
+        input: els.inp as HTMLInputElement,
         list: els.list,
         chip: els.chip,
         hints: els.foot,
-        PH: PHOSPHOR,
+        PH: PHOSPHOR as unknown as Record<string, string>,
         onClose: close,
         onToast: toast,
         onOpenUrl: async (url, _e, newTab, bg) => {
           close();
           if (newTab || bg)
-            await api.runtime.sendMessage({ type: 'NEW_TAB', url }).catch(() => window.open(url, '_blank'));
-          else await api.runtime.sendMessage({ type: 'OPEN_URL', url }).catch(() => (location.href = url));
+            await api.runtime
+              .sendMessage({ type: 'NEW_TAB', url } as unknown as never)
+              .catch(() => window.open(url, '_blank'));
+          else
+            await api.runtime
+              .sendMessage({ type: 'OPEN_URL', url } as unknown as never)
+              .catch(() => (location.href = url));
         },
         onAction: async (id) => {
           const def = actionById(id);
           if (!def?.exec) return;
           close();
-          // e.g. screenshot asks platform to let overlay repaint
           if (def.before) await def.before();
           return api.runtime
-            .sendMessage({ type: 'EXEC', action: def.exec, payload: { ...def.payload } })
+            .sendMessage({
+              type: 'EXEC',
+              action: def.exec,
+              payload: { ...(def.payload as Record<string, unknown>) },
+            } as unknown as never)
             .catch(() => {});
         },
       });
       palette.bind();
-      // focus trap + NORMAL mode click handling already bound by controller
-      loadShadowCss();
+      void loadShadowCss();
       palette.renderStatus();
     };
     mount();
   }
 
-  function fontFaces() {
+  function fontFaces(): string {
     return [400, 500, 600]
       .map(
         (w) =>
@@ -102,7 +108,7 @@ import { createPaletteController } from './palette/controller.js';
       )
       .join('');
   }
-  async function loadShadowCss() {
+  async function loadShadowCss(): Promise<void> {
     if (!shadow) return;
     try {
       const res = await fetch(api.runtime.getURL('palette.css'), { cache: 'no-store' });
@@ -123,40 +129,38 @@ import { createPaletteController } from './palette/controller.js';
     }
   }
 
-  function toggle() {
+  function toggle(): void {
     if (open) close();
-    else openPal();
+    else void openPal();
   }
-  async function openPal() {
+  async function openPal(): Promise<void> {
     if (!host) buildShell();
     open = true;
     if (palette) {
       palette.mode = 'all';
       palette.setHelp(false);
-      // reset UI to search
       palette.setUI('search');
     }
-    host.setAttribute('data-open', '');
+    host!.setAttribute('data-open', '');
     for (let i = 0; i < 20 && !els.inp; i++) await new Promise((r) => setTimeout(r, 50));
-    loadShadowCss();
-    els.inp.value = '';
+    void loadShadowCss();
+    (els.inp as HTMLInputElement).value = '';
     palette?.setUI('search');
     await palette?.refresh('');
   }
-  function close() {
+  function close(): void {
     open = false;
     if (host) host.removeAttribute('data-open');
   }
 
-  // ---------- keyboard containment ----------
-  const isPaletteEvent = (e) => {
+  const isPaletteEvent = (e: Event): boolean => {
     try {
-      const p = e.composedPath && e.composedPath();
+      const p = (e as unknown as { composedPath?: () => EventTarget[] }).composedPath?.();
       if (p) return !!host && p.includes(host);
     } catch {}
-    return !!(host && (e.target === host || (host.contains && host.contains(e.target))));
+    return !!(host && ((e.target as Node) === host || (host.contains && host.contains(e.target as Node))));
   };
-  function containKeyboard(e) {
+  function containKeyboard(e: KeyboardEvent): void {
     if (e.type === 'keydown' && (e.metaKey || e.ctrlKey) && e.shiftKey && e.code === 'KeyK') {
       if (!e.repeat) {
         e.preventDefault();
@@ -181,15 +185,15 @@ import { createPaletteController } from './palette/controller.js';
     if (!(e.key && /^F\d{1,2}$/.test(e.key))) e.preventDefault();
     if (e.type === 'keydown' && els.inp) {
       try {
-        els.inp.focus({ preventScroll: true });
+        (els.inp as HTMLInputElement).focus({ preventScroll: true });
       } catch {}
     }
   }
-  for (const type of ['keydown', 'keypress', 'keyup']) {
-    window.addEventListener(type, containKeyboard, true);
+  for (const type of ['keydown', 'keypress', 'keyup'] as const) {
+    window.addEventListener(type, containKeyboard as EventListener, true);
   }
 
-  api.runtime.onMessage.addListener((msg) => {
+  api.runtime.onMessage.addListener((msg: { type: string }) => {
     if (msg.type === 'TOGGLE_PALETTE') toggle();
   });
 

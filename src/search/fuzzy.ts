@@ -1,7 +1,6 @@
-// @ts-check
-/* search/fuzzy.js — subsequence match; earlier starts, word boundaries and runs score higher. */
+/* search/fuzzy.ts — subsequence match; earlier starts, word boundaries and runs score higher. */
 
-export function fuzzyScore(q, text) {
+export function fuzzyScore(q: string, text: string | null | undefined): number {
   q = q.toLowerCase();
   text = (text || '').toLowerCase();
   if (!q) return 1;
@@ -26,5 +25,5 @@ export function fuzzyScore(q, text) {
   return qi === q.length ? score - text.length * 0.01 : -Infinity;
 }
 
-/** @param {string} q @param {...string} fields */
-export const match = (q, ...fields) => Math.max(...fields.map((f) => fuzzyScore(q, f)));
+export const match = (q: string, ...fields: (string | null | undefined)[]): number =>
+  Math.max(...fields.map((f) => fuzzyScore(q, f ?? '')));

@@ -1,8 +1,16 @@
-// @ts-check
-/* modes.js — vim-style scopes. */
+/* modes.ts — vim-style scopes. */
 
-/** @type {{ id:string, key:string, label:string, placeholder:string, groups:string[]|null }[]} */
-export const MODES = [
+import type { ResultItem } from './shared.js';
+
+export interface Mode {
+  id: string;
+  key: string;
+  label: string;
+  placeholder: string;
+  groups: string[] | null;
+}
+
+export const MODES: Mode[] = [
   { id: 'all', key: '/', label: 'All', placeholder: 'Type a command, tab, bookmark…', groups: null },
   {
     id: 'tabs',
@@ -16,26 +24,25 @@ export const MODES = [
   { id: 'actions', key: 'a', label: 'Actions', placeholder: 'Search actions…', groups: ['Actions'] },
 ];
 
-/** @param {string} id */
-export const modeById = (id) => MODES.find((m) => m.id === id) || MODES[0];
+export const modeById = (id: string): Mode => MODES.find((m) => m.id === id) || MODES[0];
 
-/** @param {string} key */
-export const modeByKey = (key) => MODES.find((m) => m.key === key);
+export const modeByKey = (key: string): Mode | undefined => MODES.find((m) => m.key === key);
 
-/**
- * @param {import('./shared.js').ResultItem[]} items
- * @param {string} modeId
- */
-export const scopedItems = (items, modeId) => {
+export const scopedItems = (items: ResultItem[], modeId: string): ResultItem[] => {
   const m = modeById(modeId);
-  return m.groups ? items.filter((it) => m.groups.includes(it.group)) : items;
+  return m.groups ? items.filter((it) => m.groups!.includes(it.group)) : items;
 };
 
-/**
- * @param {string} key
- * @returns {{ type:string, mode?:string, delta?:number }|null}
- */
-export function commandIntent(key) {
+export type Intent =
+  | { type: 'help' }
+  | { type: 'mode'; mode: string }
+  | { type: 'search' }
+  | { type: 'move'; delta: number }
+  | { type: 'choose' }
+  | { type: 'escape' }
+  | { type: 'close' };
+
+export function commandIntent(key: string): Intent | null {
   if (key === '?') return { type: 'help' };
   const m = modeByKey(key);
   if (m) return { type: 'mode', mode: m.id };
@@ -49,8 +56,8 @@ export function commandIntent(key) {
 }
 
 /** Static cheatsheet markup; hosts inject it into their own list container. */
-export function helpHtml() {
-  const rows = (/** @type {[string,string][]} */ list) =>
+export function helpHtml(): string {
+  const rows = (list: [string, string][]) =>
     list
       .map(
         ([k, d]) =>

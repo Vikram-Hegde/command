@@ -1,24 +1,21 @@
-// @ts-check
-/* actions/registry.js — data-driven action definitions. */
+/* actions/registry.ts — data-driven action definitions. */
 import { beforeCapture } from '../platform.js';
 
-/**
- * @typedef {Object} Action
- * @property {string} id
- * @property {string} title
- * @property {string} hint
- * @property {string} icon
- * @property {string} kw
- * @property {string} [exec]
- * @property {Record<string, any>} [payload]
- * @property {boolean} [pageOnly]
- * @property {string} [requires]
- * @property {() => any} [before]
- * @property {() => any} [local]
- */
+export interface Action {
+  id: string;
+  title: string;
+  hint: string;
+  icon: string;
+  kw: string;
+  exec?: string;
+  payload?: Record<string, unknown>;
+  pageOnly?: boolean;
+  requires?: string;
+  before?: () => unknown;
+  local?: () => unknown;
+}
 
-/** @type {Action[]} */
-export const ACTIONS = [
+export const ACTIONS: Action[] = [
   { id: 'new-tab', title: 'New Tab', hint: 'Action', icon: 'plus', kw: 'new tab create blank', exec: 'new-tab' },
   {
     id: 'new-window',
@@ -309,5 +306,4 @@ export const ACTIONS = [
   },
 ];
 
-/** @param {string} id @returns {Action | undefined} */
-export const actionById = (id) => ACTIONS.find((a) => a.id === id);
+export const actionById = (id: string): Action | undefined => ACTIONS.find((a) => a.id === id);

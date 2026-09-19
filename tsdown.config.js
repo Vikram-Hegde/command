@@ -15,4 +15,4 @@ const iife = (entry) => ({
   outputOptions: { entryFileNames: '[name].js' },
 });
 
-export default defineConfig([iife('src/content.js'), iife('src/background.js'), iife('src/popup.js')]);
+export default defineConfig([iife('src/content.ts'), iife('src/background.ts'), iife('src/popup.ts')]);
