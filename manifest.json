@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CommandK",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "⌘K palette: tabs, history, bookmarks, actions, calculator, quick search.",
   "permissions": [
     "tabs",
