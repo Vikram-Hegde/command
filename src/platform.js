@@ -29,11 +29,34 @@ export function detectCaps(manifest) {
   };
 }
 
-/** @type {any} Firefox exposes promise-based `browser`; Chrome only `chrome`. */
-export const api = globalThis.browser ?? globalThis.chrome;
+/** Firefox exposes promise-based `browser`; Chrome only `chrome`. */
+export function getApi() {
+  return globalThis.browser ?? globalThis.chrome;
+}
+/** @type {any} */
+export const api = getApi();
+
+/**
+ * @param {{ permissions?: string[], browser_specific_settings?: unknown }} [manifest] @returns {Caps}
+ */
+export function getCaps(manifest) {
+  try {
+    const m = manifest || getApi().runtime.getManifest();
+    return detectCaps(m);
+  } catch {
+    // manifest read can fail in restricted contexts — degrade gracefully
+    return {
+      faviconCache: false,
+      canDiscard: false,
+      canGroup: false,
+      dataUrlDownloads: false,
+      captureNeedsRepaint: false,
+    };
+  }
+}
 
 /** @type {Caps} */
-export const caps = detectCaps(api.runtime.getManifest());
+export const caps = getCaps();
 
 /** Internal pages per engine: chrome://… vs about:… @type {Record<string,string>} */
 const CHROME_PAGES = {
@@ -67,15 +90,25 @@ export function pagesFor(manifest) {
   return manifest.browser_specific_settings ? FIREFOX_PAGES : CHROME_PAGES;
 }
 
-const pages = pagesFor(api.runtime.getManifest());
+function getPages() {
+  try {
+    return pagesFor(getApi().runtime.getManifest());
+  } catch {
+    return CHROME_PAGES;
+  }
+}
+const pages = getPages();
 
 /** @param {string} id @returns {string} */
-export const page = (id) => pages[id] || pages.newtab;
+export const page = (id) => getPages()[id] || getPages().newtab;
 export const newTab = pages.newtab;
+export function getPage(id) {
+  return page(id);
+}
 
 /** Let the page repaint (overlay closing) before a screenshot is captured. */
 export async function beforeCapture() {
-  if (!caps.captureNeedsRepaint || typeof requestAnimationFrame !== 'function') return;
+  if (!getCaps().captureNeedsRepaint || typeof requestAnimationFrame !== 'function') return;
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
 
@@ -87,19 +120,20 @@ export async function beforeCapture() {
  * @param {string} filename
  */
 export async function saveImage(dataUrl, filename) {
-  if (caps.dataUrlDownloads) {
-    return api.downloads.download({ url: dataUrl, filename, saveAs: false });
+  if (getCaps().dataUrlDownloads) {
+    return getApi().downloads.download({ url: dataUrl, filename, saveAs: false });
   }
   const blob = await (await fetch(dataUrl)).blob();
   const url = URL.createObjectURL(blob);
-  const id = await api.downloads.download({ url, filename, saveAs: false });
+  const dlApi = getApi().downloads;
+  const id = await dlApi.download({ url, filename, saveAs: false });
   const onChanged = (delta) => {
     const state = delta.state?.current;
     if (delta.id === id && (state === 'complete' || state === 'interrupted')) {
       URL.revokeObjectURL(url);
-      api.downloads.onChanged.removeListener(onChanged);
+      dlApi.onChanged.removeListener(onChanged);
     }
   };
-  api.downloads.onChanged.addListener(onChanged);
+  dlApi.onChanged.addListener(onChanged);
   return id;
 }
