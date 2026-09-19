@@ -10,7 +10,7 @@ const iife = (entry) => ({
   platform: 'browser',
   target: 'es2022',
   clean: false,
-  minify: false,
+  minify: true,
   sourcemap: false,
   outputOptions: { entryFileNames: '[name].js' },
 });
