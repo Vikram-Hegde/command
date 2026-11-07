@@ -22,7 +22,8 @@ export const handlers: Record<string, Handler> = {
     const tabId = (p.tabId as number | undefined) ?? sender.tab?.id;
     const windowId = (p.windowId as number | undefined) ?? sender.tab?.windowId;
     const all = await api.tabs.query(windowId ? { windowId } : {});
-    const idx = all.find((t) => t.id === tabId)?.index ?? 0;
+    const idx = all.find((t) => t.id === tabId)?.index;
+    if (idx == null) return;
     await api.tabs.remove(all.filter((t) => (t.index ?? 0) > idx).map((t) => t.id!) as number[]);
   },
   'close-duplicates': async () => {
@@ -94,7 +95,10 @@ export const handlers: Record<string, Handler> = {
     if (tabId == null) return;
     const t = (await api.tabs.get(tabId)) as unknown as { groupId: number };
     if (t.groupId > 0) await (api.tabs as unknown as { ungroup: (id: number) => Promise<void> }).ungroup(tabId);
-    else await (api.tabs as unknown as { group: (opts: { tabIds: number }) => Promise<void> }).group({ tabIds: tabId });
+    else
+      await (api.tabs as unknown as { group: (opts: { tabIds: number[] }) => Promise<void> }).group({
+        tabIds: [tabId],
+      });
   },
   zoom: async (p, sender) => {
     const tabId = (p.tabId as number | undefined) ?? sender.tab?.id;

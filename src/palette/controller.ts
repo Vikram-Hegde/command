@@ -6,7 +6,8 @@ import { helpHtml, modeById, commandIntent } from '../modes.js';
 import { ENGINES, nextEngine } from '../engines.js';
 import { getEngine, setEngine } from '../settings.js';
 import { api } from '../platform.js';
-import type { ResultItem, DataCache } from '../shared.js';
+import { PHASE, clampSelection, createState, transition, type PhaseEvent } from './state.js';
+import type { Action } from '../actions/registry.js';
 
 export interface ControllerOpts {
   includePageOnly: boolean;
@@ -21,7 +22,7 @@ export interface ControllerOpts {
   onClose?: () => void;
   onToast?: (msg: string) => void;
   onOpenUrl: (url: string, e: Event, newTab: boolean, bg: boolean) => Promise<void>;
-  onAction: (actionId: string) => Promise<void>;
+  onAction: (def: Action) => Promise<void>;
 }
 
 export function createPaletteController(opts: ControllerOpts) {
@@ -30,21 +31,17 @@ export function createPaletteController(opts: ControllerOpts) {
   const tabMatchLimit = opts.tabMatchLimit ?? 8;
   const maxItems = opts.maxItems ?? 60;
 
-  let mode = 'all';
-  let ui: 'search' | 'normal' = 'search';
-  let help = false;
-  let filtered: ResultItem[] = [];
-  let sel = 0;
-  let cache: DataCache = { tabs: [], bookmarks: [], history: [], closed: [] };
-  let engine = 'google';
+  const state = createState();
   let debounce: ReturnType<typeof setTimeout> | null = null;
   let seq = 0;
 
-  getEngine().then((e) => {
-    engine = e;
+  // Ranking must not use a stale engine while a cycle is being persisted.
+  const engineReady = getEngine().then((e) => {
+    state.engine = e;
   });
 
-  const searchPlaceholder = (): string => modeById(mode).placeholder || 'Type a command…';
+  const normalPlaceholder = 'Press t/h/b/a to scope · / to search · ? for help';
+  const searchPlaceholder = (): string => modeById(state.scope).placeholder || 'Type a command…';
   const NORMAL_FOOTER =
     '<span><b>t</b> tabs</span><span><b>h</b> history</span><span><b>b</b> bookmarks</span><span><b>a</b> actions</span><span><b>/</b> search</span><span><b>?</b> help</span>';
   const SEARCH_FOOTER =
@@ -52,121 +49,157 @@ export function createPaletteController(opts: ControllerOpts) {
 
   function renderStatus(): void {
     if (!chip) return;
-    const m = modeById(mode);
-    if (help) chip.textContent = '? help';
-    else if (ui === 'normal') chip.textContent = mode === 'all' ? 'NORMAL' : `NORMAL · ${m.label}`;
+    const m = modeById(state.scope);
+    if (state.phase === PHASE.HELP) chip.textContent = '? help';
+    else if (state.phase === PHASE.NORMAL) chip.textContent = state.scope === 'all' ? 'NORMAL' : `NORMAL · ${m.label}`;
     else chip.textContent = m.label;
-    chip.dataset.ui = help ? 'help' : ui;
-    input.readOnly = ui === 'normal';
-    input.placeholder = ui === 'normal' ? 'Press t/h/b/a to scope · / to search · ? for help' : searchPlaceholder();
+    chip.dataset.ui = state.phase;
+    input.readOnly = state.phase !== PHASE.SEARCH;
+    if (state.phase === PHASE.NORMAL) input.placeholder = normalPlaceholder;
+    else if (state.phase === PHASE.HELP)
+      input.placeholder = state.resume === PHASE.NORMAL ? normalPlaceholder : searchPlaceholder();
+    else input.placeholder = searchPlaceholder();
+    if (state.load === 'error') chip.title = 'Browser data unavailable — showing cached results';
+    else chip.removeAttribute('title');
     if (hints) {
       const isPopupHints = hints.id === 'hints';
       if (isPopupHints) {
         const normal = NORMAL_FOOTER.replaceAll('<b>', '<kbd>').replaceAll('</b>', '</kbd>');
         const search = SEARCH_FOOTER.replaceAll('<b>', '<kbd>').replaceAll('</b>', '</kbd>');
-        hints.innerHTML = help
-          ? '<span><kbd>?</kbd> or <kbd>esc</kbd> to close help</span>'
-          : ui === 'normal'
-            ? normal
-            : search;
+        hints.innerHTML =
+          state.phase === PHASE.HELP
+            ? '<span><kbd>?</kbd> or <kbd>esc</kbd> to close help</span>'
+            : state.phase === PHASE.NORMAL
+              ? normal
+              : search;
       } else {
-        hints.innerHTML = help
-          ? '<span><b>?</b> or <b>esc</b> to close help</span>'
-          : ui === 'normal'
-            ? NORMAL_FOOTER
-            : SEARCH_FOOTER;
+        hints.innerHTML =
+          state.phase === PHASE.HELP
+            ? '<span><b>?</b> or <b>esc</b> to close help</span>'
+            : state.phase === PHASE.NORMAL
+              ? NORMAL_FOOTER
+              : SEARCH_FOOTER;
       }
     }
   }
 
-  function setUI(next: 'search' | 'normal'): void {
-    if (next === 'normal' && help) help = false;
-    ui = next;
-    if (ui === 'search') setTimeout(() => input.focus(), 0);
-    else input.blur();
+  function dispatch(event: PhaseEvent): void {
+    for (const effect of transition(state, event)) {
+      switch (effect) {
+        case 'focus':
+          setTimeout(() => input.focus(), 0);
+          break;
+        case 'blur':
+          input.blur();
+          break;
+        case 'render':
+          render();
+          break;
+        case 'refresh':
+          queueRefresh(input.value);
+          break;
+        case 'close':
+          onClose?.();
+          break;
+      }
+    }
     renderStatus();
-  }
-
-  function setHelp(on: boolean): void {
-    help = on;
-    if (on) input.blur();
-    else if (ui === 'search') setTimeout(() => input.focus(), 0);
-    renderStatus();
-    render();
   }
 
   function handleCmdKey(e: KeyboardEvent): void {
-    if (help) {
-      if (e.key === '?' || e.key === 'Escape' || e.key === 'q') setHelp(false);
+    if (state.phase === PHASE.HELP) {
+      if (e.key === '?' || e.key === 'Escape' || e.key === 'q') dispatch({ type: 'dismiss-help' });
       return;
     }
     const intent = commandIntent(e.key);
     if (!intent) return;
     switch (intent.type) {
       case 'help':
-        setHelp(true);
+        dispatch({ type: 'help' });
         break;
       case 'mode':
-        mode = intent.mode;
-        setUI('search');
-        queueRefresh(input.value);
+        dispatch({ type: 'scope', scope: intent.mode });
         break;
       case 'search':
-        setUI('search');
+        dispatch({ type: 'search' });
         break;
       case 'move':
-        setSel(sel + intent.delta);
+        setSel(state.selected + intent.delta);
         break;
       case 'choose':
         void choose(e);
         break;
       case 'escape':
-        if (mode !== 'all') {
-          mode = 'all';
-          renderStatus();
-          queueRefresh(input.value);
-        } else if (onClose) onClose();
+        dispatch({ type: 'escape' });
         break;
       case 'close':
-        if (onClose) onClose();
+        dispatch({ type: 'close' });
         break;
     }
   }
 
   async function refresh(q: string): Promise<void> {
     const cur = ++seq;
+    state.load = 'loading';
+    if (!state.filtered.length) render();
+    await engineReady;
     const d = await fetchData(q);
     if (cur !== seq) return;
-    if (d) cache = d;
-    filtered = buildItems(q, mode, cache, { engine, includePageOnly, tabLimit, tabMatchLimit }).slice(0, maxItems);
-    sel = 0;
+    if (d) {
+      state.cache = d;
+      state.load = 'ready';
+    } else {
+      state.load = 'error';
+    }
+    state.filtered = buildItems(q, state.scope, state.cache, {
+      engine: state.engine,
+      includePageOnly,
+      tabLimit,
+      tabMatchLimit,
+    }).slice(0, maxItems);
+    state.selected = 0;
     render();
+    renderStatus();
   }
 
   function queueRefresh(q: string): void {
     void refresh(q);
   }
 
+  function cancelPending(): void {
+    if (debounce) {
+      clearTimeout(debounce);
+      debounce = null;
+    }
+    seq++;
+    state.load = 'idle';
+  }
+
   function render(): void {
     if (!list) return;
-    if (help) {
+    if (state.phase === PHASE.HELP) {
       list.innerHTML = helpHtml();
       return;
     }
-    list.innerHTML = filtered.length ? itemsHtml(filtered, sel, PH) : emptyHtml(mode, input.value, engine);
+    list.innerHTML = state.filtered.length
+      ? itemsHtml(state.filtered, state.selected, PH)
+      : emptyHtml(state.scope, input.value, state.engine, state.load);
     list.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
   }
 
   function setSel(n: number): void {
-    sel = Math.max(0, Math.min(n, filtered.length - 1));
+    clampSelection(state, n);
     const nodes = list.querySelectorAll('.cmdk-item');
-    nodes.forEach((el, i) => el.classList.toggle('selected', i === sel));
-    nodes[sel]?.scrollIntoView({ block: 'nearest' });
+    nodes.forEach((el, i) => el.classList.toggle('selected', i === state.selected));
+    nodes[state.selected]?.scrollIntoView({ block: 'nearest' });
   }
 
   function onInput(): void {
     if (debounce) clearTimeout(debounce);
-    debounce = setTimeout(() => void refresh(input.value), 140);
+    debounce = setTimeout(() => {
+      debounce = null;
+      void refresh(input.value);
+    }, 140);
   }
 
   function onKey(e: KeyboardEvent): void {
@@ -177,28 +210,28 @@ export function createPaletteController(opts: ControllerOpts) {
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSel(sel + 1);
+      setSel(state.selected + 1);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setSel(sel - 1);
+      setSel(state.selected - 1);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       void choose(e);
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      setUI('normal');
+      dispatch({ type: 'escape' });
     } else if (e.key === '?' && !input.value) {
       e.preventDefault();
-      setHelp(true);
+      dispatch({ type: 'help' });
     }
   }
 
   async function choose(e: Event & { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }): Promise<void> {
-    const it = filtered[sel];
+    const it = state.filtered[state.selected];
     const q = input.value;
     if (!it) {
-      if (q.trim() && mode === 'all') {
-        const url = ENGINES[engine as keyof typeof ENGINES](q.trim());
+      if (q.trim() && state.scope === 'all') {
+        const url = ENGINES[state.engine as keyof typeof ENGINES](q.trim());
         await onOpenUrl(url, e, false, false);
       }
       return;
@@ -220,24 +253,16 @@ export function createPaletteController(opts: ControllerOpts) {
       if (onClose) onClose();
     } else if (it.kind === 'action') {
       const def = it.def!;
-      if (def.id === 'engine') {
-        engine = nextEngine(engine);
-        setEngine(engine);
+      if (def.run.type === 'engine') {
+        await engineReady;
+        state.engine = nextEngine(state.engine);
+        setEngine(state.engine);
         input.value = '';
         await refresh('');
-        if (onToast) onToast(`Search engine: ${engine}`);
+        if (onToast) onToast(`Search engine: ${state.engine}`);
         return;
       }
-      const isCopyFromPopup = !includePageOnly && (def.id === 'copy-url' || def.id === 'copy-title');
-      if (def.local && !isCopyFromPopup) {
-        if (onClose) onClose();
-        try {
-          await def.local();
-        } catch {}
-        return;
-      }
-      if (def.before) await def.before();
-      await onAction(def.id);
+      await onAction(def);
     } else {
       await onOpenUrl(it.url!, e, newTab, bg);
     }
@@ -247,7 +272,7 @@ export function createPaletteController(opts: ControllerOpts) {
     input.addEventListener('input', onInput);
     input.addEventListener('keydown', onKey as EventListener);
     input.addEventListener('click', () => {
-      if (ui === 'normal' || help) setUI('search');
+      if (state.phase !== PHASE.SEARCH) dispatch({ type: 'search' });
     });
     for (const t of ['keypress', 'keyup'] as const) input.addEventListener(t, (e) => e.stopPropagation());
     list.addEventListener(
@@ -262,46 +287,21 @@ export function createPaletteController(opts: ControllerOpts) {
       const target = e.target as Element;
       const el = target.closest('.cmdk-item') as HTMLElement | null;
       if (!el) return;
-      sel = Number((el as HTMLElement).dataset.i);
+      clampSelection(state, Number((el as HTMLElement).dataset.i));
       void choose(e as unknown as Event & { shiftKey: boolean; ctrlKey: boolean; metaKey: boolean });
     });
   }
 
   return {
-    get mode(): string {
-      return mode;
+    get phase(): string {
+      return state.phase;
     },
-    set mode(v: string) {
-      mode = v;
-    },
-    get ui(): string {
-      return ui;
-    },
-    get help(): boolean {
-      return help;
-    },
-    get engine(): string {
-      return engine;
-    },
-    set engine(v: string) {
-      engine = v;
-    },
-    get filtered(): ResultItem[] {
-      return filtered;
-    },
-    get selected(): number {
-      return sel;
-    },
+    enter: (): void => dispatch({ type: 'enter' }),
     refresh,
     queueRefresh,
-    render,
     renderStatus,
-    setUI,
-    setHelp,
     handleCmdKey,
-    setSel,
-    choose,
+    cancelPending,
     bind,
-    getCache: (): DataCache => cache,
   };
 }

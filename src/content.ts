@@ -1,7 +1,6 @@
 /* CommandK overlay — injected on every page, renders into a shadow root. */
 import { api } from './platform.js';
 import { PHOSPHOR } from './phosphor-icons.js';
-import { actionById } from './actions/registry.js';
 import { createPaletteController } from './palette/controller.js';
 
 (() => {
@@ -11,17 +10,20 @@ import { createPaletteController } from './palette/controller.js';
   let host: HTMLElement | null = null;
   let shadow: ShadowRoot | null = null;
   const els: Record<string, HTMLElement> = {};
-  let open = false;
+  let isOpen = false;
   let palette: ReturnType<typeof createPaletteController> | null = null;
   let shadowSheet: CSSStyleSheet | null = null;
+  let cssState: 'idle' | 'loading' | 'ready' = 'idle';
+  let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
   function toast(msg: string): void {
     if (!els.inp) return;
-    (els.inp as HTMLInputElement).value = '';
-    (els.inp as HTMLInputElement).placeholder = msg;
-    setTimeout(() => {
-      if (palette && !palette.help && palette.ui === 'search')
-        (els.inp as HTMLInputElement).placeholder = palette.mode ? '' : '';
+    const inp = els.inp as HTMLInputElement;
+    inp.value = '';
+    inp.placeholder = msg;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toastTimer = null;
       palette?.renderStatus();
     }, 1500);
   }
@@ -78,16 +80,29 @@ import { createPaletteController } from './palette/controller.js';
               .sendMessage({ type: 'OPEN_URL', url } as unknown as never)
               .catch(() => (location.href = url));
         },
-        onAction: async (id) => {
-          const def = actionById(id);
-          if (!def?.exec) return;
+        onAction: async (def) => {
           close();
-          if (def.before) await def.before();
-          return api.runtime
+          const run = def.run;
+          if (run.type === 'local') {
+            try {
+              await run.run();
+            } catch {}
+            return;
+          }
+          if (run.type === 'clipboard') {
+            const text = run.field === 'url' ? location.href : `[${document.title}](${location.href})`;
+            try {
+              await navigator.clipboard.writeText(text);
+            } catch {}
+            return;
+          }
+          if (run.type !== 'exec') return;
+          if (run.before) await run.before();
+          await api.runtime
             .sendMessage({
               type: 'EXEC',
-              action: def.exec,
-              payload: { ...(def.payload as Record<string, unknown>) },
+              action: run.action,
+              payload: { ...run.payload },
             } as unknown as never)
             .catch(() => {});
         },
@@ -109,10 +124,14 @@ import { createPaletteController } from './palette/controller.js';
       .join('');
   }
   async function loadShadowCss(): Promise<void> {
-    if (!shadow) return;
+    if (!shadow || cssState === 'loading' || cssState === 'ready') return;
+    cssState = 'loading';
     try {
       const res = await fetch(api.runtime.getURL('palette.css'), { cache: 'no-store' });
-      if (!res.ok) return;
+      if (!res.ok) {
+        cssState = 'idle';
+        return;
+      }
       const css = fontFaces() + (await res.text());
       try {
         if (!shadowSheet) {
@@ -124,33 +143,34 @@ import { createPaletteController } from './palette/controller.js';
       } catch {
         if (els.css) els.css.textContent = css;
       }
+      cssState = 'ready';
     } catch (err) {
+      cssState = 'idle';
       console.warn('[CommandK] palette.css could not load:', err);
     }
   }
 
   function toggle(): void {
-    if (open) close();
-    else void openPal();
+    if (isOpen) close();
+    else openPal();
   }
-  async function openPal(): Promise<void> {
+  function openPal(): void {
     if (!host) buildShell();
-    open = true;
-    if (palette) {
-      palette.mode = 'all';
-      palette.setHelp(false);
-      palette.setUI('search');
-    }
-    host!.setAttribute('data-open', '');
-    for (let i = 0; i < 20 && !els.inp; i++) await new Promise((r) => setTimeout(r, 50));
+    isOpen = true;
+    if (els.inp) (els.inp as HTMLInputElement).value = '';
+    host?.setAttribute('data-open', '');
+    palette?.enter();
     void loadShadowCss();
-    (els.inp as HTMLInputElement).value = '';
-    palette?.setUI('search');
-    await palette?.refresh('');
+    void palette?.refresh('');
   }
   function close(): void {
-    open = false;
+    isOpen = false;
     if (host) host.removeAttribute('data-open');
+    if (toastTimer) {
+      clearTimeout(toastTimer);
+      toastTimer = null;
+    }
+    palette?.cancelPending();
   }
 
   const isPaletteEvent = (e: Event): boolean => {
@@ -170,9 +190,9 @@ import { createPaletteController } from './palette/controller.js';
       }
       return;
     }
-    if (!open) return;
+    if (!isOpen) return;
     if (isPaletteEvent(e)) return;
-    if (palette && (palette.ui === 'normal' || palette.help)) {
+    if (palette && palette.phase !== 'search') {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.type === 'keydown') palette.handleCmdKey(e);
       e.stopPropagation();

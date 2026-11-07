@@ -1,12 +1,6 @@
-/* data/fetch.ts — background data fetching with sequence guard. */
+/* data/fetch.ts — background data fetching. */
 import { api } from '../platform.js';
 import type { DataCache } from '../shared.js';
-
-let seq = 0;
-
-export function nextSeq(): number {
-  return ++seq;
-}
 
 export async function fetchData(q: string): Promise<DataCache | null> {
   try {

@@ -6,7 +6,7 @@ export type InitDataMsg = { type: 'INIT_DATA'; query: string };
 export type SearchHistoryMsg = { type: 'SEARCH_HISTORY'; query: string };
 export type ExecMsg = { type: 'EXEC'; action: string; payload: Record<string, unknown> };
 export type NewTabMsg = { type: 'NEW_TAB'; url: string };
-export type OpenUrlMsg = { type: 'OPEN_URL'; url: string; tabId?: number; background?: boolean };
+export type OpenUrlMsg = { type: 'OPEN_URL'; url: string; tabId?: number };
 export type ToggleMsg = { type: 'TOGGLE_PALETTE' };
 export type Message = InitDataMsg | SearchHistoryMsg | ExecMsg | NewTabMsg | OpenUrlMsg | ToggleMsg;
 
@@ -18,7 +18,7 @@ export function newTab(url: string): Promise<unknown> {
   return send({ type: 'NEW_TAB', url });
 }
 
-export function openUrl(url: string, opts: { tabId?: number; background?: boolean } = {}): Promise<unknown> {
+export function openUrl(url: string, opts: { tabId?: number } = {}): Promise<unknown> {
   return send({ type: 'OPEN_URL', url, ...opts });
 }
 

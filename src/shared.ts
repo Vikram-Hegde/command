@@ -41,8 +41,8 @@ export { isUrl, normUrl } from './search/url.js';
 export { buildItems } from './search/ranking.js';
 export type { BuildOpts } from './search/ranking.js';
 // modes
-export { MODES, modeById, modeByKey, scopedItems, helpHtml, commandIntent } from './modes.js';
-export type { Mode, Intent } from './modes.js';
+export { MODES, SCOPES, modeById, modeByKey, scopedItems, helpHtml, commandIntent } from './modes.js';
+export type { Mode, Intent, Scope } from './modes.js';
 // ui
 export { escHtml, advanceFav, itemsHtml, emptyHtml } from './ui/render.js';
 // actions

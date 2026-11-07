@@ -5,7 +5,7 @@ import { ACTIONS } from '../actions/registry.js';
 import { match } from './fuzzy.js';
 import { evalMath, isMath } from './calculator.js';
 import { isUrl, normUrl } from './url.js';
-import { scopedItems } from '../modes.js';
+import { scopedItems, type Scope } from '../modes.js';
 import type { DataCache, ResultItem } from '../shared.js';
 
 const GROUP_ORDER: Record<string, number> = {
@@ -34,7 +34,7 @@ export interface BuildOpts {
 
 export function buildItems(
   q: string,
-  scope: string,
+  scope: Scope,
   data: DataCache,
   { engine = 'google', includePageOnly = true, tabLimit = 6, tabMatchLimit = 8, caps = platformCaps }: BuildOpts = {},
 ): ResultItem[] {

@@ -1,29 +1,39 @@
 /* actions/registry.ts — data-driven action definitions. */
 import { beforeCapture } from '../platform.js';
 
+export type ActionRun =
+  | { type: 'local'; run: () => unknown }
+  | { type: 'exec'; action: string; payload?: Record<string, unknown>; before?: () => unknown }
+  | { type: 'engine' }
+  | { type: 'clipboard'; field: 'url' | 'title-url' };
+
 export interface Action {
   id: string;
   title: string;
   hint: string;
   icon: string;
   kw: string;
-  exec?: string;
-  payload?: Record<string, unknown>;
+  run: ActionRun;
   pageOnly?: boolean;
   requires?: string;
-  before?: () => unknown;
-  local?: () => unknown;
 }
 
 export const ACTIONS: Action[] = [
-  { id: 'new-tab', title: 'New Tab', hint: 'Action', icon: 'plus', kw: 'new tab create blank', exec: 'new-tab' },
+  {
+    id: 'new-tab',
+    title: 'New Tab',
+    hint: 'Action',
+    icon: 'plus',
+    kw: 'new tab create blank',
+    run: { type: 'exec', action: 'new-tab' },
+  },
   {
     id: 'new-window',
     title: 'New Window',
     hint: 'Action',
     icon: 'app-window',
     kw: 'new window popup',
-    exec: 'new-window',
+    run: { type: 'exec', action: 'new-window' },
   },
   {
     id: 'incognito',
@@ -31,8 +41,7 @@ export const ACTIONS: Action[] = [
     hint: 'Action',
     icon: 'sunglasses',
     kw: 'incognito private secret',
-    exec: 'new-window',
-    payload: { incognito: true },
+    run: { type: 'exec', action: 'new-window', payload: { incognito: true } },
   },
   {
     id: 'reopen',
@@ -40,7 +49,7 @@ export const ACTIONS: Action[] = [
     hint: 'Action',
     icon: 'arrow-counter-clockwise',
     kw: 'reopen restore undo closed',
-    exec: 'reopen-closed',
+    run: { type: 'exec', action: 'reopen-closed' },
   },
   {
     id: 'duplicate',
@@ -48,43 +57,71 @@ export const ACTIONS: Action[] = [
     hint: 'Tab',
     icon: 'copy',
     kw: 'duplicate clone copy tab',
-    exec: 'duplicate',
+    run: { type: 'exec', action: 'duplicate' },
   },
-  { id: 'pin', title: 'Pin / Unpin Tab', hint: 'Tab', icon: 'push-pin', kw: 'pin unpin', exec: 'pin-toggle' },
+  {
+    id: 'pin',
+    title: 'Pin / Unpin Tab',
+    hint: 'Tab',
+    icon: 'push-pin',
+    kw: 'pin unpin',
+    run: { type: 'exec', action: 'pin-toggle' },
+  },
   {
     id: 'mute',
     title: 'Mute / Unmute Tab',
     hint: 'Tab',
     icon: 'speaker-slash',
     kw: 'mute unmute sound audio',
-    exec: 'mute-toggle',
+    run: { type: 'exec', action: 'mute-toggle' },
   },
-  { id: 'reload', title: 'Reload Tab', hint: 'Tab', icon: 'arrow-clockwise', kw: 'reload refresh', exec: 'reload' },
+  {
+    id: 'reload',
+    title: 'Reload Tab',
+    hint: 'Tab',
+    icon: 'arrow-clockwise',
+    kw: 'reload refresh',
+    run: { type: 'exec', action: 'reload' },
+  },
   {
     id: 'hard-reload',
     title: 'Hard Reload (bypass cache)',
     hint: 'Tab',
     icon: 'lightning',
     kw: 'hard reload cache refresh',
-    exec: 'hard-reload',
+    run: { type: 'exec', action: 'hard-reload' },
   },
-  { id: 'back', title: 'Go Back', hint: 'Navigate', icon: 'arrow-left', kw: 'back previous history', exec: 'go-back' },
+  {
+    id: 'back',
+    title: 'Go Back',
+    hint: 'Navigate',
+    icon: 'arrow-left',
+    kw: 'back previous history',
+    run: { type: 'exec', action: 'go-back' },
+  },
   {
     id: 'forward',
     title: 'Go Forward',
     hint: 'Navigate',
     icon: 'arrow-right',
     kw: 'forward next history',
-    exec: 'go-forward',
+    run: { type: 'exec', action: 'go-forward' },
   },
-  { id: 'close-tab', title: 'Close This Tab', hint: 'Tab', icon: 'x', kw: 'close delete tab', exec: 'close-tab' },
+  {
+    id: 'close-tab',
+    title: 'Close This Tab',
+    hint: 'Tab',
+    icon: 'x',
+    kw: 'close delete tab',
+    run: { type: 'exec', action: 'close-tab' },
+  },
   {
     id: 'close-others',
     title: 'Close Other Tabs',
     hint: 'Tab',
     icon: 'broom',
     kw: 'close others',
-    exec: 'close-others',
+    run: { type: 'exec', action: 'close-others' },
   },
   {
     id: 'close-right',
@@ -92,7 +129,7 @@ export const ACTIONS: Action[] = [
     hint: 'Tab',
     icon: 'arrow-line-right',
     kw: 'close right',
-    exec: 'close-right',
+    run: { type: 'exec', action: 'close-right' },
   },
   {
     id: 'close-dupes',
@@ -100,7 +137,7 @@ export const ACTIONS: Action[] = [
     hint: 'Tab',
     icon: 'trash',
     kw: 'close duplicate dedupe',
-    exec: 'close-duplicates',
+    run: { type: 'exec', action: 'close-duplicates' },
   },
   {
     id: 'move-window',
@@ -108,7 +145,7 @@ export const ACTIONS: Action[] = [
     hint: 'Tab',
     icon: 'arrow-square-out',
     kw: 'move pop out window',
-    exec: 'move-to-new-window',
+    run: { type: 'exec', action: 'move-to-new-window' },
   },
   {
     id: 'group',
@@ -116,7 +153,7 @@ export const ACTIONS: Action[] = [
     hint: 'Tab',
     icon: 'stack',
     kw: 'group ungroup organize',
-    exec: 'group-tab',
+    run: { type: 'exec', action: 'group-tab' },
     requires: 'canGroup',
   },
   {
@@ -125,7 +162,7 @@ export const ACTIONS: Action[] = [
     hint: 'Tab',
     icon: 'moon',
     kw: 'discard unload sleep memory suspend',
-    exec: 'discard',
+    run: { type: 'exec', action: 'discard' },
     requires: 'canDiscard',
   },
   {
@@ -134,7 +171,7 @@ export const ACTIONS: Action[] = [
     hint: 'Clipboard',
     icon: 'link',
     kw: 'copy url link address',
-    local: () => navigator.clipboard.writeText(location.href),
+    run: { type: 'clipboard', field: 'url' },
   },
   {
     id: 'copy-title',
@@ -142,7 +179,7 @@ export const ACTIONS: Action[] = [
     hint: 'Clipboard',
     icon: 'clipboard-text',
     kw: 'copy title markdown',
-    local: () => navigator.clipboard.writeText(`[${document.title}](${location.href})`),
+    run: { type: 'clipboard', field: 'title-url' },
   },
   {
     id: 'bookmark',
@@ -150,7 +187,7 @@ export const ACTIONS: Action[] = [
     hint: 'Action',
     icon: 'bookmark',
     kw: 'bookmark star favorite save',
-    exec: 'bookmark-tab',
+    run: { type: 'exec', action: 'bookmark-tab' },
   },
   {
     id: 'screenshot',
@@ -158,8 +195,7 @@ export const ACTIONS: Action[] = [
     hint: 'Action',
     icon: 'camera',
     kw: 'screenshot capture png image',
-    exec: 'screenshot',
-    before: beforeCapture,
+    run: { type: 'exec', action: 'screenshot', before: beforeCapture },
   },
   {
     id: 'print',
@@ -168,7 +204,7 @@ export const ACTIONS: Action[] = [
     icon: 'printer',
     kw: 'print pdf',
     pageOnly: true,
-    local: () => window.print(),
+    run: { type: 'local', run: () => window.print() },
   },
   {
     id: 'source',
@@ -177,7 +213,7 @@ export const ACTIONS: Action[] = [
     icon: 'code',
     kw: 'source view html code',
     pageOnly: true,
-    local: () => window.open('view-source:' + location.href, '_blank'),
+    run: { type: 'local', run: () => window.open('view-source:' + location.href, '_blank') },
   },
   {
     id: 'scroll-top',
@@ -186,7 +222,7 @@ export const ACTIONS: Action[] = [
     icon: 'arrow-up',
     kw: 'scroll top up',
     pageOnly: true,
-    local: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
+    run: { type: 'local', run: () => window.scrollTo({ top: 0, behavior: 'smooth' }) },
   },
   {
     id: 'scroll-bottom',
@@ -195,7 +231,7 @@ export const ACTIONS: Action[] = [
     icon: 'arrow-down',
     kw: 'scroll bottom down',
     pageOnly: true,
-    local: () => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }),
+    run: { type: 'local', run: () => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }) },
   },
   {
     id: 'fullscreen',
@@ -204,8 +240,11 @@ export const ACTIONS: Action[] = [
     icon: 'corners-out',
     kw: 'fullscreen f11 present',
     pageOnly: true,
-    local: () =>
-      document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(),
+    run: {
+      type: 'local',
+      run: () =>
+        document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(),
+    },
   },
   {
     id: 'zoom-in',
@@ -213,8 +252,7 @@ export const ACTIONS: Action[] = [
     hint: 'View',
     icon: 'magnifying-glass-plus',
     kw: 'zoom in bigger',
-    exec: 'zoom',
-    payload: { delta: 0.1 },
+    run: { type: 'exec', action: 'zoom', payload: { delta: 0.1 } },
   },
   {
     id: 'zoom-out',
@@ -222,8 +260,7 @@ export const ACTIONS: Action[] = [
     hint: 'View',
     icon: 'magnifying-glass-minus',
     kw: 'zoom out smaller',
-    exec: 'zoom',
-    payload: { delta: -0.1 },
+    run: { type: 'exec', action: 'zoom', payload: { delta: -0.1 } },
   },
   {
     id: 'zoom-reset',
@@ -231,8 +268,7 @@ export const ACTIONS: Action[] = [
     hint: 'View',
     icon: 'arrows-counter-clockwise',
     kw: 'zoom reset 100',
-    exec: 'zoom',
-    payload: { delta: 0 },
+    run: { type: 'exec', action: 'zoom', payload: { delta: 0 } },
   },
   {
     id: 'pg-history',
@@ -240,8 +276,7 @@ export const ACTIONS: Action[] = [
     hint: 'Chrome',
     icon: 'clock',
     kw: 'history open chrome page',
-    exec: 'chrome-page',
-    payload: { page: 'history' },
+    run: { type: 'exec', action: 'chrome-page', payload: { page: 'history' } },
   },
   {
     id: 'pg-downloads',
@@ -249,8 +284,7 @@ export const ACTIONS: Action[] = [
     hint: 'Chrome',
     icon: 'download-simple',
     kw: 'downloads files chrome',
-    exec: 'chrome-page',
-    payload: { page: 'downloads' },
+    run: { type: 'exec', action: 'chrome-page', payload: { page: 'downloads' } },
   },
   {
     id: 'pg-bookmarks',
@@ -258,8 +292,7 @@ export const ACTIONS: Action[] = [
     hint: 'Chrome',
     icon: 'bookmarks-simple',
     kw: 'bookmarks manager chrome',
-    exec: 'chrome-page',
-    payload: { page: 'bookmarks' },
+    run: { type: 'exec', action: 'chrome-page', payload: { page: 'bookmarks' } },
   },
   {
     id: 'pg-settings',
@@ -267,8 +300,7 @@ export const ACTIONS: Action[] = [
     hint: 'Chrome',
     icon: 'gear',
     kw: 'settings preferences chrome',
-    exec: 'chrome-page',
-    payload: { page: 'settings' },
+    run: { type: 'exec', action: 'chrome-page', payload: { page: 'settings' } },
   },
   {
     id: 'pg-extensions',
@@ -276,8 +308,7 @@ export const ACTIONS: Action[] = [
     hint: 'Chrome',
     icon: 'puzzle-piece',
     kw: 'extensions plugins chrome',
-    exec: 'chrome-page',
-    payload: { page: 'extensions' },
+    run: { type: 'exec', action: 'chrome-page', payload: { page: 'extensions' } },
   },
   {
     id: 'pg-passwords',
@@ -285,8 +316,7 @@ export const ACTIONS: Action[] = [
     hint: 'Chrome',
     icon: 'key',
     kw: 'password passkey login',
-    exec: 'chrome-page',
-    payload: { page: 'passwords' },
+    run: { type: 'exec', action: 'chrome-page', payload: { page: 'passwords' } },
   },
   {
     id: 'pg-clear',
@@ -294,8 +324,7 @@ export const ACTIONS: Action[] = [
     hint: 'Chrome',
     icon: 'eraser',
     kw: 'clear cache cookies data privacy',
-    exec: 'chrome-page',
-    payload: { page: 'clearData' },
+    run: { type: 'exec', action: 'chrome-page', payload: { page: 'clearData' } },
   },
   {
     id: 'engine',
@@ -303,6 +332,7 @@ export const ACTIONS: Action[] = [
     hint: 'Settings',
     icon: 'magnifying-glass',
     kw: 'search engine google duckduckgo bing default',
+    run: { type: 'engine' },
   },
 ];
 

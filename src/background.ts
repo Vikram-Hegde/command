@@ -3,8 +3,6 @@ import { api } from './platform.js';
 import { handlers } from './actions/handlers.js';
 import type { Message } from './messaging.js';
 
-type SendResponse = (response: unknown) => void;
-
 interface BgMessage extends Record<string, unknown> {
   type: string;
   query?: string;
@@ -12,14 +10,12 @@ interface BgMessage extends Record<string, unknown> {
   payload?: Record<string, unknown>;
   url?: string;
   tabId?: number;
-  background?: boolean;
 }
 
-const MESSAGE_HANDLERS: Record<
-  string,
-  (msg: BgMessage, sender: chrome.runtime.MessageSender, sendResponse: SendResponse) => Promise<void>
-> = {
-  INIT_DATA: async (msg, _sender, sendResponse) => {
+type MessageHandler = (msg: BgMessage, sender: chrome.runtime.MessageSender) => Promise<unknown>;
+
+const MESSAGE_HANDLERS: Record<string, MessageHandler> = {
+  INIT_DATA: async (msg) => {
     const q = String(msg.query || '').slice(0, 100);
     const [tabs, recentHistory, bookmarks, recentlyClosed] = await Promise.all([
       api.tabs.query({}),
@@ -27,36 +23,27 @@ const MESSAGE_HANDLERS: Record<
       queryBookmarks(q),
       api.sessions.getRecentlyClosed({ maxResults: 5 }).catch(() => [] as unknown[]),
     ]);
-    sendResponse({ tabs, recentHistory, bookmarks, recentlyClosed });
+    return { tabs, recentHistory, bookmarks, recentlyClosed };
   },
-  SEARCH_HISTORY: async (msg, _sender, sendResponse) => {
-    const r = await api.history.search({ text: String(msg.query || ''), maxResults: 12 });
-    sendResponse({ results: r });
+  SEARCH_HISTORY: async (msg) => {
+    const results = await api.history.search({ text: String(msg.query || ''), maxResults: 12 });
+    return { results };
   },
-  EXEC: async (msg, sender, sendResponse) => {
+  EXEC: async (msg, sender) => {
     await execAction(msg.action as string, (msg.payload as Record<string, unknown>) ?? {}, sender);
-    sendResponse({ ok: true });
+    return { ok: true };
   },
-  NEW_TAB: async (msg, _sender, sendResponse) => {
-    if (!msg.url || typeof msg.url !== 'string') {
-      sendResponse({ ok: false });
-      return;
-    }
+  NEW_TAB: async (msg) => {
+    if (!msg.url || typeof msg.url !== 'string') return { ok: false, error: 'invalid url' };
     await api.tabs.create({ url: msg.url, active: true });
-    sendResponse({ ok: true });
+    return { ok: true };
   },
-  OPEN_URL: async (msg, sender, sendResponse) => {
-    if (!msg.url || typeof msg.url !== 'string') {
-      sendResponse({ ok: false });
-      return;
-    }
-    const tab = sender.tab;
-    const targetId = (msg.tabId as number | undefined) ?? tab?.id;
-    if (msg.background)
-      await api.tabs.create({ url: msg.url as string, active: false, index: tab ? tab.index + 1 : undefined });
-    else if (targetId) await api.tabs.update(targetId, { url: msg.url as string });
-    else await api.tabs.create({ url: msg.url as string });
-    sendResponse({ ok: true });
+  OPEN_URL: async (msg, sender) => {
+    if (!msg.url || typeof msg.url !== 'string') return { ok: false, error: 'invalid url' };
+    const targetId = msg.tabId ?? sender.tab?.id;
+    if (targetId) await api.tabs.update(targetId, { url: msg.url });
+    else await api.tabs.create({ url: msg.url });
+    return { ok: true };
   },
 };
 
@@ -78,10 +65,18 @@ api.commands?.onCommand.addListener(async (command: string) => {
 });
 
 api.runtime.onMessage.addListener(
-  (msg: BgMessage, sender: chrome.runtime.MessageSender, sendResponse: SendResponse) => {
+  (msg: BgMessage, sender: chrome.runtime.MessageSender, sendResponse: (response: unknown) => void) => {
+    const handler = MESSAGE_HANDLERS[msg.type];
+    if (!handler) {
+      sendResponse({ ok: false, error: `unknown message: ${msg.type}` });
+      return false;
+    }
     void (async () => {
-      const handler = MESSAGE_HANDLERS[msg.type];
-      if (handler) await handler(msg, sender, sendResponse);
+      try {
+        sendResponse(await handler(msg, sender));
+      } catch (err) {
+        sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
     })();
     return true;
   },
@@ -117,5 +112,6 @@ async function execAction(
   sender: chrome.runtime.MessageSender,
 ): Promise<void> {
   const handler = handlers[action];
-  if (handler) await handler(p, sender);
+  if (!handler) throw new Error(`unknown action: ${action}`);
+  await handler(p, sender);
 }

@@ -1,6 +1,7 @@
 /* ui/render.ts — rendering helpers (favicon, items, empty states). */
 import { api, caps as platformCaps } from '../platform.js';
-import { modeById } from '../modes.js';
+import { modeById, type Scope } from '../modes.js';
+import type { LoadState } from '../palette/state.js';
 import type { ResultItem } from '../shared.js';
 
 const fav = (url: string): string | null => {
@@ -79,7 +80,10 @@ export function itemsHtml(items: ResultItem[], selected: number, PH: Record<stri
   return html;
 }
 
-export function emptyHtml(scope: string, query: string, engine: string): string {
+export function emptyHtml(scope: Scope, query: string, engine: string, load: LoadState = 'ready'): string {
+  if (load === 'loading') return '<div class="cmdk-empty">Loading…</div>';
+  if (load === 'error')
+    return `<div class="cmdk-empty">Couldn't load browser data.${scope === 'all' && query.trim() ? ' Press Enter to search the web.' : ' The extension may have been reloaded.'}</div>`;
   if (scope === 'all')
     return `<div class="cmdk-empty">No results — press Enter to search “${escHtml(query)}” on ${escHtml(engine)}</div>`;
   return `<div class="cmdk-empty">No matching ${escHtml(modeById(scope).label.toLowerCase())} — press Esc then / to search everywhere</div>`;

@@ -2,8 +2,11 @@
 
 import type { ResultItem } from './shared.js';
 
+export const SCOPES = ['all', 'tabs', 'history', 'bookmarks', 'actions'] as const;
+export type Scope = (typeof SCOPES)[number];
+
 export interface Mode {
-  id: string;
+  id: Scope;
   key: string;
   label: string;
   placeholder: string;
@@ -35,7 +38,7 @@ export const scopedItems = (items: ResultItem[], modeId: string): ResultItem[] =
 
 export type Intent =
   | { type: 'help' }
-  | { type: 'mode'; mode: string }
+  | { type: 'mode'; mode: Scope }
   | { type: 'search' }
   | { type: 'move'; delta: number }
   | { type: 'choose' }

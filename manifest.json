@@ -27,7 +27,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["palette.css", "fonts/*"],
+      "resources": ["palette.css", "fonts/*", "_favicon/*"],
       "matches": ["<all_urls>"]
     }
   ],
